@@ -1,0 +1,50 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local configuration and sensitive material
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+wallet.dat
+wallets/
+secrets/
+credentials/
+# Local branding must never be tracked here
+txsignx-brand/
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/

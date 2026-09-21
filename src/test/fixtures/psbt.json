@@ -1,0 +1,81 @@
+{
+  "psbt_version": 0,
+  "format": "BIP174",
+  "unsigned_txid": "a6375ce044efb3b817642d5b3c584e63e6e5de2b32cbaed1a34b72c1156d6381",
+  "transaction_version": 2,
+  "locktime": 42,
+  "input_count": 1,
+  "output_count": 2,
+  "total_output_sats": 150000,
+  "explicit_rbf": true,
+  "global_xpub_count": 0,
+  "proprietary_count": 0,
+  "unknown_count": 0,
+  "signing_state": "unsigned",
+  "fee": {
+    "status": "available",
+    "fee_sats": 1000
+  },
+  "inputs": [
+    {
+      "index": 0,
+      "previous_txid": "1111111111111111111111111111111111111111111111111111111111111111",
+      "previous_vout": 1,
+      "sequence": 4294967293,
+      "explicit_rbf": true,
+      "utxo": {
+        "source": "witness_utxo",
+        "status": "valid",
+        "value_sats": 151000,
+        "script_pubkey_hex": "00143333333333333333333333333333333333333333",
+        "script_pubkey_size_bytes": 22,
+        "script_type": "p2wpkh"
+      },
+      "sighash_type": null,
+      "partial_ecdsa_signature_count": 0,
+      "tap_key_signature_present": false,
+      "tap_script_signature_count": 0,
+      "bip32_derivation_count": 0,
+      "tap_key_origin_count": 0,
+      "redeem_script_present": false,
+      "witness_script_present": false,
+      "final_script_sig_present": false,
+      "final_script_witness_present": false,
+      "proprietary_count": 0,
+      "unknown_count": 0,
+      "signing_state": "unsigned"
+    }
+  ],
+  "outputs": [
+    {
+      "index": 0,
+      "value_sats": 100000,
+      "script_pubkey_hex": "76a914222222222222222222222222222222222222222288ac",
+      "script_pubkey_size_bytes": 25,
+      "script_type": "p2pkh",
+      "bip32_derivation_count": 0,
+      "tap_key_origin_count": 0,
+      "redeem_script_present": false,
+      "witness_script_present": false,
+      "tap_internal_key_present": false,
+      "tap_tree_present": false,
+      "proprietary_count": 0,
+      "unknown_count": 0
+    },
+    {
+      "index": 1,
+      "value_sats": 50000,
+      "script_pubkey_hex": "00143333333333333333333333333333333333333333",
+      "script_pubkey_size_bytes": 22,
+      "script_type": "p2wpkh",
+      "bip32_derivation_count": 0,
+      "tap_key_origin_count": 0,
+      "redeem_script_present": false,
+      "witness_script_present": false,
+      "tap_internal_key_present": false,
+      "tap_tree_present": false,
+      "proprietary_count": 0,
+      "unknown_count": 0
+    }
+  ]
+}

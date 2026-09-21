@@ -1,0 +1,193 @@
+{
+  "inspection": {
+    "explicit_rbf": true,
+    "fee": {
+      "fee_sats": 200000,
+      "status": "available"
+    },
+    "format": "BIP174",
+    "global_xpub_count": 0,
+    "input_count": 1,
+    "inputs": [
+      {
+        "bip32_derivation_count": 0,
+        "explicit_rbf": true,
+        "final_script_sig_present": false,
+        "final_script_witness_present": false,
+        "index": 0,
+        "partial_ecdsa_signature_count": 0,
+        "previous_txid": "1111111111111111111111111111111111111111111111111111111111111111",
+        "previous_vout": 1,
+        "proprietary_count": 0,
+        "redeem_script_present": false,
+        "sequence": 4294967293,
+        "sighash_type": null,
+        "signing_state": "unsigned",
+        "tap_key_origin_count": 0,
+        "tap_key_signature_present": false,
+        "tap_script_signature_count": 0,
+        "unknown_count": 0,
+        "utxo": {
+          "script_pubkey_hex": "00143333333333333333333333333333333333333333",
+          "script_pubkey_size_bytes": 22,
+          "script_type": "p2wpkh",
+          "source": "witness_utxo",
+          "status": "valid",
+          "value_sats": 2200000
+        },
+        "witness_script_present": false
+      }
+    ],
+    "locktime": 42,
+    "output_count": 2,
+    "outputs": [
+      {
+        "bip32_derivation_count": 0,
+        "index": 0,
+        "proprietary_count": 0,
+        "redeem_script_present": false,
+        "script_pubkey_hex": "76a914222222222222222222222222222222222222222288ac",
+        "script_pubkey_size_bytes": 25,
+        "script_type": "p2pkh",
+        "tap_internal_key_present": false,
+        "tap_key_origin_count": 0,
+        "tap_tree_present": false,
+        "unknown_count": 0,
+        "value_sats": 2000000,
+        "witness_script_present": false
+      },
+      {
+        "bip32_derivation_count": 0,
+        "index": 1,
+        "proprietary_count": 0,
+        "redeem_script_present": false,
+        "script_pubkey_hex": "00143333333333333333333333333333333333333333",
+        "script_pubkey_size_bytes": 22,
+        "script_type": "p2wpkh",
+        "tap_internal_key_present": false,
+        "tap_key_origin_count": 0,
+        "tap_tree_present": false,
+        "unknown_count": 0,
+        "value_sats": 0,
+        "witness_script_present": false
+      }
+    ],
+    "proprietary_count": 0,
+    "psbt_version": 0,
+    "signing_state": "unsigned",
+    "total_output_sats": 2000000,
+    "transaction_version": 2,
+    "unknown_count": 0,
+    "unsigned_txid": "a71f508f5f734fcf2f32f3b3956ac1bafe33c0cb60aba987709f017d812b4126"
+  },
+  "policy": {
+    "config": {
+      "max_absolute_fee_sats": 100000,
+      "max_fee_ratio_bps": 1000
+    },
+    "decision": "block",
+    "evaluated_rules": [
+      "TG002",
+      "TG003",
+      "TG009",
+      "TG010",
+      "TG011",
+      "TG012",
+      "TG013",
+      "TG014"
+    ],
+    "finding_count": 1,
+    "findings": [
+      {
+        "code": "TG002",
+        "location": {
+          "type": "global"
+        },
+        "message": "Transaction fee is 200000 sats, exceeding the configured 100000-sat limit.",
+        "recommendation": "Review transaction inputs, outputs, and fee configuration before signing.",
+        "severity": "critical",
+        "title": "Excessive Absolute Fee"
+      }
+    ],
+    "highest_severity": "critical",
+    "risk_level": "critical",
+    "rule_evaluations": [
+      {
+        "code": "TG001",
+        "reason": "no_node_context",
+        "status": "not_evaluated"
+      },
+      {
+        "code": "TG002",
+        "reason": null,
+        "status": "evaluated"
+      },
+      {
+        "code": "TG003",
+        "reason": null,
+        "status": "evaluated"
+      },
+      {
+        "code": "TG004",
+        "reason": "no_wallet_context",
+        "status": "not_evaluated"
+      },
+      {
+        "code": "TG005",
+        "reason": "no_wallet_context",
+        "status": "not_evaluated"
+      },
+      {
+        "code": "TG006",
+        "reason": "no_node_context",
+        "status": "not_evaluated"
+      },
+      {
+        "code": "TG009",
+        "reason": null,
+        "status": "evaluated"
+      },
+      {
+        "code": "TG010",
+        "reason": null,
+        "status": "evaluated"
+      },
+      {
+        "code": "TG011",
+        "reason": null,
+        "status": "evaluated"
+      },
+      {
+        "code": "TG012",
+        "reason": null,
+        "status": "evaluated"
+      },
+      {
+        "code": "TG013",
+        "reason": null,
+        "status": "evaluated"
+      },
+      {
+        "code": "TG014",
+        "reason": null,
+        "status": "evaluated"
+      },
+      {
+        "code": "TG015",
+        "reason": "no_node_context",
+        "status": "not_evaluated"
+      },
+      {
+        "code": "TG016",
+        "reason": "no_node_context",
+        "status": "not_evaluated"
+      },
+      {
+        "code": "TG017",
+        "reason": "no_node_context",
+        "status": "not_evaluated"
+      }
+    ],
+    "scope_note": "Policy scope is incomplete. PASS means no currently evaluated active policy requires review or blocking; wallet-context rules are not evaluated without wallet context; wallet ownership, expected network, change detection, blockchain confirmations, address reuse, and cryptographic signature validity are not verified."
+  }
+}

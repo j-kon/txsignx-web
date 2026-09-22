@@ -57,6 +57,8 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
   const partiallyCount = policy?.rule_evaluations.filter(r=>r.status==='partially_evaluated').length ?? 0
   const notEvaluatedCount = policy?.rule_evaluations.filter(r=>r.status==='not_evaluated').length ?? 0
 
+  const verdictIcon = policy?.decision==='pass' ? '✓' : policy?.decision==='review' ? '◇' : '⛔'
+
   return (
     <section className="report animate-verdict" aria-label="Analysis report">
       {policy?(
@@ -64,34 +66,37 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
           <header className={`verdict-banner ${policy.decision.toLowerCase()}`}>
             <div className="verdict-main">
               <span className="verdict-label">Preflight Decision</span>
-              <h2>{policy.decision.toUpperCase()}</h2>
+              <div className="verdict-headline">
+                <span className="verdict-icon" aria-hidden="true">{verdictIcon}</span>
+                <h2>{policy.decision.toUpperCase()}</h2>
+              </div>
               {policy.decision==='pass'&&<p className="verdict-subtext">No evaluated active rule requires review or blocking.</p>}
             </div>
             <div className="verdict-meta">
               <div className="risk-badge">
                 <span className="risk-label">Risk Level</span>
-                <strong>{humanize(policy.risk_level).toUpperCase()}</strong>
+                <strong className="risk-value">{humanize(policy.risk_level).toUpperCase()}</strong>
               </div>
             </div>
           </header>
 
-          {/* Metric Chips */}
+          {/* Metric Chips with sequential reveal */}
           <div className="coverage-metrics-row">
-            <div className="metric-chip">
+            <div className="metric-chip chip-stagger-1">
               <span className="metric-num">{policy.finding_count}</span>
               <span className="metric-name">Findings</span>
             </div>
-            <div className="metric-chip">
+            <div className="metric-chip chip-stagger-2">
               <span className="metric-num">{evaluatedCount}</span>
               <span className="metric-name">Evaluated</span>
             </div>
-            <div className="metric-chip">
+            <div className="metric-chip chip-stagger-3">
               <span className="metric-num">{partiallyCount}</span>
-              <span className="metric-name">Partial</span>
+              <span className="metric-name">Partially evaluated</span>
             </div>
-            <div className="metric-chip">
+            <div className="metric-chip chip-stagger-4">
               <span className="metric-num">{notEvaluatedCount}</span>
-              <span className="metric-name">Not Evaluated</span>
+              <span className="metric-name">Not evaluated</span>
             </div>
           </div>
 
@@ -109,18 +114,37 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
               <div className="findings-list">
                 {policy.findings.map((finding,index)=>(
                   <article className={`finding finding-card ${finding.severity.toLowerCase()}`} key={`${finding.code}-${index}`}>
-                    <div className="finding-heading">
-                      <code className="finding-code">{finding.code}</code>
+                    <div className="finding-header">
+                      <div className="finding-code-title">
+                        <code className="finding-code">{finding.code}</code>
+                        <h4>{finding.title}</h4>
+                      </div>
                       <span className={`finding-sev sev-${finding.severity.toLowerCase()}`}>
                         {humanize(finding.severity).toUpperCase()}
                       </span>
                     </div>
-                    <h4>{finding.title}</h4>
                     <p className="finding-msg">{finding.message}</p>
-                    <p className="finding-evidence">
-                      Evidence location: <strong>{humanize(finding.location.type)}</strong>
-                      {finding.location.index===undefined?'':` (index ${finding.location.index})`}
-                    </p>
+                    <div className="finding-details-grid">
+                      <div className="finding-detail-item">
+                        <span className="detail-label">Location</span>
+                        <span className="detail-value">
+                          {humanize(finding.location.type)}
+                          {finding.location.index===undefined?'':` (index ${finding.location.index})`}
+                        </span>
+                      </div>
+                      {finding.code==='TG002'&&policy.config.max_absolute_fee_sats!==undefined&&(
+                        <div className="finding-detail-item">
+                          <span className="detail-label">Configured limit</span>
+                          <span className="detail-value">{policy.config.max_absolute_fee_sats.toLocaleString()} sats</span>
+                        </div>
+                      )}
+                      {finding.code==='TG003'&&policy.config.max_fee_ratio_bps!==undefined&&(
+                        <div className="finding-detail-item">
+                          <span className="detail-label">Configured limit</span>
+                          <span className="detail-value">{(policy.config.max_fee_ratio_bps/100).toFixed(2)}% ({policy.config.max_fee_ratio_bps} bps)</span>
+                        </div>
+                      )}
+                    </div>
                     {finding.recommendation&&(
                       <div className="finding-rec">
                         <span className="rec-kicker">Recommendation</span>

@@ -319,11 +319,35 @@ export function Inspector({api}:{api:ApiClient}) {
         </section>
 
         <div className="result-panel" aria-live="polite" aria-busy={loading}>
-          {report?(
+          {loading ? (
+            <section className="analyzing-panel" role="status">
+              <div className="analyzing-scanline" aria-hidden="true" />
+              <div className="analyzing-content">
+                <div className="analyzing-pulse-core" aria-hidden="true">
+                  <div className="pulse-ring" />
+                  <span className="pulse-dot" />
+                </div>
+                <h3>{mode === 'raw' ? 'Inspecting transaction…' : 'Analyzing PSBT…'}</h3>
+                <p className="muted">Evaluating deterministic policy rules in memory via connected Rust API.</p>
+              </div>
+            </section>
+          ) : report ? (
             <ReportView report={report} onClear={clear}/>
-          ):(
+          ) : (
             <section className="empty-report">
-              <div className="empty-symbol" aria-hidden="true">⌁</div>
+              <div className="decorative-topology" aria-hidden="true">
+                <svg viewBox="0 0 240 160" width="240" height="160" fill="none">
+                  <line x1="120" y1="20" x2="120" y2="140" stroke="#1E4B8F" strokeWidth="1.2" strokeDasharray="3 4" opacity="0.5" />
+                  <line x1="30" y1="80" x2="210" y2="80" stroke="#1E4B8F" strokeWidth="1.2" strokeDasharray="3 4" opacity="0.5" />
+                  <circle cx="120" cy="25" r="4" fill="#111827" stroke="#3B82F6" strokeWidth="1.5" />
+                  <circle cx="120" cy="135" r="4" fill="#111827" stroke="#3B82F6" strokeWidth="1.5" />
+                  <circle cx="35" cy="80" r="4" fill="#111827" stroke="#3B82F6" strokeWidth="1.5" />
+                  <circle cx="205" cy="80" r="4" fill="#111827" stroke="#F7931A" strokeWidth="1.5" />
+                  {/* Central X badge */}
+                  <rect x="105" y="65" width="30" height="30" rx="4" fill="#111827" stroke="#243041" strokeWidth="1.5" />
+                  <path d="M114 74L126 86M126 74L114 86" stroke="#F7931A" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </div>
               <h2>Understand what you are signing.</h2>
               <p>Paste an unsigned PSBT or raw transaction to evaluate against pre-sign security policies. The report cleanly separates observed facts, policy findings, and checks requiring additional context.</p>
               <div className="empty-chips">

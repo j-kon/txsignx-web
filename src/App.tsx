@@ -1,12 +1,63 @@
 import {useEffect,useState} from 'react'
 import {ApiClient} from './lib/api/client'
+import {Header} from './components/Header'
+import {Home} from './pages/Home'
 import {Inspector} from './features/Inspector'
 import {Policies} from './features/Policies'
-function Home(){return <><section className="hero"><div className="hero-copy"><h1>Bitcoin transaction security before signing.</h1><p className="lead">A deterministic open-source pre-sign security engine for Bitcoin transactions and PSBTs.</p><div className="actions"><a className="button primary" href="#inspector">Open Inspector</a><a href="https://github.com/j-kon/txsignx" rel="noreferrer">View on GitHub</a><a href="https://github.com/j-kon/txsignx-docs" rel="noreferrer">Read Docs</a></div><p className="positioning">Not another wallet.<br/>A security layer for wallets.</p></div><div className="preview"><div className="preview-title">Public synthetic example</div><pre><span className="terminal-muted">$ txsignx psbt preflight --file pass.b64 --json</span>{'\n\n'}{'"decision": '}<span className="pass-text">"pass"</span>{'\n"risk_level": "low"\n"finding_count": 0\n\n"signing_state": "unsigned"\n"fee_sats": 1000\n"input_count": 1\n"output_count": 2'}</pre><div className="preview-note">PASS applies only to evaluated rules.<br/>Wallet and node context are absent in this example.</div></div></section><section className="home-method"><h2>Make the transaction legible.</h2><div><h3>Inspect the facts</h3><p>Read inputs, outputs, fees, script types and PSBT metadata before signing.</p></div><div><h3>Understand the findings</h3><p>Get a deterministic PASS, REVIEW or BLOCK decision with evidence from active policy rules.</p></div><div><h3>Know the limits</h3><p>See which checks were evaluated, partially evaluated or skipped because context was absent.</p></div></section></>}
+
 function App(){
   const [page,setPage]=useState(()=>window.location.hash)
-  const [connection]=useState(()=>{try{return {api:new ApiClient(),error:''}}catch{return {api:null,error:'Invalid API URL configuration. Set VITE_TXSIGNX_API_URL to an HTTP(S) API base URL without credentials, query or fragment.'}}})
-  useEffect(()=>{const change=()=>setPage(window.location.hash);window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change)},[])
-  return <><a className="skip-link" href="#main">Skip to content</a><header className="site-header"><a className="wordmark" href="#home" aria-label="TxSignX Home">TxSign<span>X</span></a><nav aria-label="Main navigation"><a href="#inspector" aria-current={page==='#inspector'?'page':undefined}>Inspector</a><a href="#policies" aria-current={page==='#policies'?'page':undefined}>Policy rules</a><a href="https://github.com/j-kon/txsignx" rel="noreferrer">GitHub</a></nav><span className="development">Development preview</span></header><main id="main">{connection.error?<p role="alert">{connection.error}</p>:page==='#inspector'?<Inspector api={connection.api!}/>:page==='#policies'?<Policies api={connection.api!}/>:<Home/>}</main><footer><span>TxSignX — Inspect. Verify. Sign with Confidence.</span><span>Open source. Not audited or production-ready.</span></footer></>
+  const [connection]=useState(()=>{
+    try{
+      return {api:new ApiClient(),error:''}
+    }catch{
+      return {
+        api:null,
+        error:'Invalid API URL configuration. Set VITE_TXSIGNX_API_URL to an HTTP(S) API base URL without credentials, query or fragment.'
+      }
+    }
+  })
+
+  useEffect(()=>{
+    const change=()=>setPage(window.location.hash)
+    window.addEventListener('hashchange',change)
+    return ()=>window.removeEventListener('hashchange',change)
+  },[])
+
+  return (
+    <>
+      <a className="skip-link" href="#main">Skip to content</a>
+      <Header page={page} />
+      <main id="main">
+        {connection.error?(
+          <div className="connection-error" role="alert">
+            <p>{connection.error}</p>
+          </div>
+        ):page==='#inspector'?(
+          <Inspector api={connection.api!}/>
+        ):page==='#policies'?(
+          <Policies api={connection.api!}/>
+        ):(
+          <Home/>
+        )}
+      </main>
+      <footer className="site-footer">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <span className="footer-title">TxSignX — Inspect. Verify. Sign with Confidence.</span>
+            <p className="footer-desc">A deterministic open-source pre-sign security layer for Bitcoin transactions and PSBTs.</p>
+          </div>
+          <div className="footer-meta">
+            <span>Open source. Not audited or production-ready.</span>
+            <span className="footer-links">
+              <a href="https://github.com/j-kon/txsignx" target="_blank" rel="noreferrer">GitHub</a> ·{' '}
+              <a href="https://github.com/j-kon/txsignx-docs" target="_blank" rel="noreferrer">Documentation</a>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </>
+  )
 }
+
 export default App

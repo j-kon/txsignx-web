@@ -61,8 +61,12 @@ describe('product flows',()=>{
   it('renders the actual positioning, orbital visual, and public synthetic preview',()=>{
     render(<App/>)
     expect(screen.getByRole('heading',{name:'Bitcoin transaction security before signing.'})).toBeTruthy()
-    expect(screen.getByText('Public synthetic example')).toBeTruthy()
+    expect(screen.getAllByText('Public synthetic example').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('The pre-sign verification boundary.')).toBeTruthy()
+    expect(screen.getByText('Transaction context')).toBeTruthy()
+    expect(screen.getByText('Inspect + verify')).toBeTruthy()
+    expect(screen.getByText('Deterministic rules')).toBeTruthy()
+    expect(screen.getByText('External signing step')).toBeTruthy()
     expect(screen.getByText('No probabilistic AI decides if a transaction is safe.')).toBeTruthy()
   })
 
@@ -211,5 +215,37 @@ describe('product flows',()=>{
     expect(screen.queryByRole('button',{name:/sign/i})).toBeNull()
     expect(screen.queryByRole('button',{name:/broadcast/i})).toBeNull()
     expect(screen.queryByRole('button',{name:/finalize/i})).toBeNull()
+  })
+
+  it('renders generic pending state while inspecting without fake progress claims',async()=>{
+    let resolveRequest: (v: unknown) => void = () => {}
+    const pendingPromise = new Promise(resolve => { resolveRequest = resolve })
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+      if (url.endsWith('capabilities')){
+        return new Response(JSON.stringify(caps),{status:200,headers:{'Content-Type':'application/json'}})
+      }
+      await pendingPromise
+      return new Response(JSON.stringify(pass),{status:200,headers:{'Content-Type':'application/json'}})
+    }))
+
+    await openInspector()
+    fireEvent.change(screen.getByLabelText('PSBT base64'),{target:{value:'cHNidP8='}})
+    fireEvent.click(screen.getByRole('button',{name:/Run Preflight/}))
+
+    expect(screen.getByText('Analyzing PSBT…')).toBeTruthy()
+    expect(screen.getByText('Evaluating deterministic policy rules in memory via connected Rust API.')).toBeTruthy()
+
+    resolveRequest(null)
+    expect(await screen.findByRole('heading',{name:'PASS'})).toBeTruthy()
+  })
+
+  it('includes strict reduced-motion CSS rules',()=>{
+    const proc = (globalThis as unknown as { process?: { getBuiltinModule?: (m: string) => { readFileSync: (p: string, enc: string) => string } } }).process
+    const fs = proc?.getBuiltinModule?.('fs')
+    const css = fs?.readFileSync('src/index.css','utf-8') ?? ''
+    expect(css).toContain('@media (prefers-reduced-motion: reduce)')
+    expect(css).toContain('animation-duration: 0.001s !important')
+    expect(css).toContain('.analyzing-scanline')
+    expect(css).toContain('.flow-pulse-inbound')
   })
 })

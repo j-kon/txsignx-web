@@ -77,22 +77,42 @@ export function Policies({api}:{api:ApiClient}){
             </p>
           </div>
 
-          {/* Filter Bar */}
+          {/* Segmented Filter Controls */}
           <div className="policy-filter-bar" role="toolbar" aria-label="Filter policy rules">
-            <span className="filter-label">Filter:</span>
-            <div className="filter-chips">
-              {(['all','active','deferred','critical','high','medium','info'] as const).map(f=>(
-                <button
-                  key={f}
-                  type="button"
-                  className={`filter-chip ${filter===f?'chip-active':''}`}
-                  onClick={()=>setFilter(f)}
-                  aria-pressed={filter===f}
-                >
-                  {f.charAt(0).toUpperCase()+f.slice(1)}
-                  <span className="chip-count">{counts[f]}</span>
-                </button>
-              ))}
+            <div className="filter-group">
+              <span className="filter-group-label">Status:</span>
+              <div className="filter-chips">
+                {(['all','active','deferred'] as const).map(f=>(
+                  <button
+                    key={f}
+                    type="button"
+                    className={`filter-chip ${filter===f?'chip-active':''}`}
+                    onClick={()=>setFilter(f)}
+                    aria-pressed={filter===f}
+                  >
+                    {f.charAt(0).toUpperCase()+f.slice(1)}
+                    <span className="chip-count">{counts[f]}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="filter-group">
+              <span className="filter-group-label">Severity:</span>
+              <div className="filter-chips">
+                {(['critical','high','medium','info'] as const).map(f=>(
+                  <button
+                    key={f}
+                    type="button"
+                    className={`filter-chip ${filter===f?'chip-active':''}`}
+                    onClick={()=>setFilter(f)}
+                    aria-pressed={filter===f}
+                  >
+                    {f.charAt(0).toUpperCase()+f.slice(1)}
+                    <span className="chip-count">{counts[f]}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -103,32 +123,37 @@ export function Policies({api}:{api:ApiClient}){
           ):(
             <div className="rule-registry">
               {filteredRules.map((rule:CatalogRule)=>(
-                <article key={rule.code} className={`rule-card ${rule.active?'is-active':'is-deferred'}`}>
-                  <header>
+                <article key={rule.code} className={`rule-card registry-card ${rule.active?'is-active':'is-deferred'}`}>
+                  <header className="registry-card-header">
                     <code className="rule-code">{rule.code}</code>
-                    <span className={rule.active?'rule-active':'muted rule-deferred'}>
-                      {rule.active?'Active':'Deferred'}
+                    <span className={`status-indicator ${rule.active?'status-active':'status-deferred'}`}>
+                      {rule.active?'Active':'Deferred'} {rule.active?'●':'○'}
                     </span>
                   </header>
-                  <h2>{rule.title}</h2>
+                  <h2 className="rule-title">{rule.title}</h2>
+                  <div className="registry-meta-row">
+                    {'default_severity' in rule&&typeof rule.default_severity==='string'&&(
+                      <div className="registry-meta-item">
+                        <span className="meta-label">Severity</span>
+                        <span className={`sev-tag sev-${rule.default_severity.toLowerCase()}`}>
+                          {humanize(rule.default_severity).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="registry-meta-item">
+                      <span className="meta-label">Required context</span>
+                      <span className="meta-val">
+                        {rule.required_context.length?rule.required_context.join('; '):'None'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="registry-divider" aria-hidden="true" />
                   <p className="rule-desc">{rule.description}</p>
                   {!rule.active&&(
                     <p className="rule-deferred-note">
                       Reserved / deferred; not currently evaluated.
                     </p>
                   )}
-                  {'default_severity' in rule&&typeof rule.default_severity==='string'&&(
-                    <p className="muted rule-sev">
-                      Trigger severity:{' '}
-                      <span className={`sev-tag sev-${rule.default_severity.toLowerCase()}`}>
-                        {humanize(rule.default_severity)}
-                      </span>
-                    </p>
-                  )}
-                  <p className="muted rule-context">
-                    Required context:{' '}
-                    <strong>{rule.required_context.length?rule.required_context.join('; '):'None'}</strong>
-                  </p>
                 </article>
               ))}
             </div>

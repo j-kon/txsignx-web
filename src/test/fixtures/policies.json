@@ -1,0 +1,179 @@
+{
+  "active_rules": [
+    {
+      "code": "TG001",
+      "title": "Wrong Network",
+      "description": "Explicit configured network differs from node-reported chain.",
+      "default_severity": "critical",
+      "active": true,
+      "required_context": [
+        "explicit network and bound Bitcoin Core node context"
+      ]
+    },
+    {
+      "code": "TG002",
+      "title": "Excessive Absolute Fee",
+      "description": "Fee exceeds the configured absolute development limit.",
+      "default_severity": "critical",
+      "active": true,
+      "required_context": [
+        "available absolute fee"
+      ]
+    },
+    {
+      "code": "TG003",
+      "title": "Excessive Fee Percentage",
+      "description": "Fee share of total input value exceeds the configured development limit.",
+      "default_severity": "critical",
+      "active": true,
+      "required_context": [
+        "available absolute fee",
+        "total output value"
+      ]
+    },
+    {
+      "code": "TG004",
+      "title": "Unknown Wallet Input",
+      "description": "Resolved prevout has no descriptor match within the configured derivation window.",
+      "default_severity": "high",
+      "active": true,
+      "required_context": [
+        "public descriptor wallet context",
+        "valid resolved prevout"
+      ]
+    },
+    {
+      "code": "TG005",
+      "title": "Unknown Change Output",
+      "description": "Explicitly expected change does not match the internal keychain (HIGH external match; CRITICAL no match).",
+      "default_severity": "high",
+      "active": true,
+      "required_context": [
+        "public descriptor wallet context",
+        "explicit expected-change output indexes"
+      ]
+    },
+    {
+      "code": "TG006",
+      "title": "Immature Coinbase Input",
+      "description": "Node-reported coinbase has fewer than 100 confirmations.",
+      "default_severity": "critical",
+      "active": true,
+      "required_context": [
+        "explicit network and bound Bitcoin Core node context"
+      ]
+    },
+    {
+      "code": "TG009",
+      "title": "Invalid UTXO Context",
+      "description": "Supplied previous-output metadata is internally inconsistent.",
+      "default_severity": "critical",
+      "active": true,
+      "required_context": [
+        "input UTXO consistency"
+      ]
+    },
+    {
+      "code": "TG010",
+      "title": "Missing UTXO Context",
+      "description": "Previous-output information is missing, preventing reliable fee evaluation.",
+      "default_severity": "high",
+      "active": true,
+      "required_context": [
+        "input UTXO presence"
+      ]
+    },
+    {
+      "code": "TG011",
+      "title": "Unusual Sighash Type",
+      "description": "An explicit sighash differs from SIGHASH_DEFAULT or SIGHASH_ALL.",
+      "default_severity": "high",
+      "active": true,
+      "required_context": [
+        "explicit numeric sighash"
+      ]
+    },
+    {
+      "code": "TG012",
+      "title": "Unknown or Proprietary Metadata",
+      "description": "PSBT contains extension metadata that TxSignX does not interpret.",
+      "default_severity": "info",
+      "active": true,
+      "required_context": [
+        "global/input/output extension counts"
+      ]
+    },
+    {
+      "code": "TG013",
+      "title": "Unrecognized Script Type",
+      "description": "An output or resolved prevout uses an unrecognized script template.",
+      "default_severity": "medium",
+      "active": true,
+      "required_context": [
+        "output script classification",
+        "resolved prevout script classification"
+      ]
+    },
+    {
+      "code": "TG014",
+      "title": "Non-Zero OP_RETURN Value",
+      "description": "Positive value is assigned to a provably unspendable OP_RETURN output.",
+      "default_severity": "critical",
+      "active": true,
+      "required_context": [
+        "output value",
+        "output script classification"
+      ]
+    },
+    {
+      "code": "TG015",
+      "title": "Node UTXO Unavailable",
+      "description": "Outpoint is unavailable in the node's queried UTXO views.",
+      "default_severity": "critical",
+      "active": true,
+      "required_context": [
+        "explicit network and bound Bitcoin Core node context"
+      ]
+    },
+    {
+      "code": "TG016",
+      "title": "Node Prevout Mismatch",
+      "description": "Resolved PSBT prevout disagrees with node-reported value or script.",
+      "default_severity": "critical",
+      "active": true,
+      "required_context": [
+        "explicit network and bound Bitcoin Core node context"
+      ]
+    },
+    {
+      "code": "TG017",
+      "title": "Mempool Spend Conflict",
+      "description": "Chain UTXO is absent from the node's mempool-aware view.",
+      "default_severity": "high",
+      "active": true,
+      "required_context": [
+        "explicit network and bound Bitcoin Core node context"
+      ]
+    }
+  ],
+  "deferred_rules": [
+    {
+      "code": "TG007",
+      "title": "Dust Output",
+      "description": "Reserved / deferred; not evaluated in Milestone 5.",
+      "active": false,
+      "required_context": [
+        "explicit relay/dust policy assumptions or node policy context"
+      ]
+    },
+    {
+      "code": "TG008",
+      "title": "Address Reuse",
+      "description": "Reserved / deferred; not evaluated in Milestone 5.",
+      "active": false,
+      "required_context": [
+        "wallet address/history context"
+      ]
+    }
+  ]
+}

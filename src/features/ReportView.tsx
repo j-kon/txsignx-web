@@ -30,6 +30,7 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
   const preflight='inspection' in report?report:null
   const inspection=preflight?preflight.inspection:report as Exclude<Report,{inspection:unknown}>
   const psbt='unsigned_txid' in inspection?inspection:null
+  const isTransaction='txid' in inspection
   const policy=preflight?.policy
 
   const json=()=>JSON.stringify(report,null,2)
@@ -188,9 +189,49 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
         </>
       ):(
         <header className="inspection-heading">
-          <h2>Inspection report</h2>
-          <p>Structural observations and transaction facts. No preflight policy was requested.</p>
+          <span className="section-kicker">Factual Inspection</span>
+          <h2>{isTransaction ? 'Transaction Explorer' : 'PSBT Inspection'}</h2>
+          <p>
+            {isTransaction
+              ? ('chain_context' in inspection && inspection.chain_context
+                ? 'Confirmed transaction context and on-chain verification facts.'
+                : 'Structural transaction observations and decoded facts. Offline raw transaction inspection.')
+              : 'Structural PSBT observations. No preflight policy was requested.'}
+          </p>
         </header>
+      )}
+
+      {/* Chain Context Section (when present from node lookup) */}
+      {'chain_context' in inspection && inspection.chain_context && (
+        <section className="report-section chain-context-section">
+          <h3>Chain Context</h3>
+          <div className={`chain-context-card status-${inspection.chain_context.status}`}>
+            <div className="chain-context-header">
+              <span className="chain-context-title">Bitcoin Core Node Verification</span>
+              <span className={`chain-status-badge status-${inspection.chain_context.status}`}>
+                {inspection.chain_context.status === 'confirmed'
+                  ? `Confirmed (${inspection.chain_context.confirmations ?? 0} confirmation${inspection.chain_context.confirmations === 1 ? '' : 's'})`
+                  : inspection.chain_context.status === 'mempool'
+                  ? 'In Mempool (0 confirmations)'
+                  : 'Unavailable'}
+              </span>
+            </div>
+            <dl className="chain-context-grid">
+              <div>
+                <dt>Network</dt>
+                <dd><code className="badge-network">{inspection.chain_context.network}</code></dd>
+              </div>
+              <div>
+                <dt>Confirmations</dt>
+                <dd>{inspection.chain_context.confirmations !== undefined ? inspection.chain_context.confirmations.toLocaleString() : 'Unavailable'}</dd>
+              </div>
+              <div className="block-hash-row">
+                <dt>Block Hash</dt>
+                <dd className="hash-value">{inspection.chain_context.block_hash ?? 'Unconfirmed (mempool)'}</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
       )}
 
       {/* Transaction Facts Section */}
@@ -198,8 +239,10 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
         <h3>Transaction facts</h3>
         <p className="muted">
           {psbt
-            ?'Signing state describes field presence, not verified signatures. UTXO consistency checks supplied metadata.'
-            :'Raw transactions do not provide spent-output values, fees or a network.'}
+            ? 'Signing state describes field presence, not verified signatures. UTXO consistency checks supplied metadata.'
+            : 'chain_context' in inspection && inspection.chain_context
+            ? 'Transaction verified against Bitcoin Core node. Prevout values and chain status are resolved.'
+            : 'Raw transactions do not provide spent-output values, fees or a network unless resolved or specified.'}
         </p>
 
         <dl className="summary-facts">
@@ -207,18 +250,57 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
             <dt>{psbt?'Unsigned transaction ID':'Transaction ID'}</dt>
             <dd className="hash-value">{psbt?psbt.unsigned_txid:'txid' in inspection?inspection.txid:''}</dd>
           </div>
-          <div>
-            <dt>Signing state</dt>
-            <dd>{psbt?humanize(psbt.signing_state):'Unavailable'}</dd>
-          </div>
-          <div>
-            <dt>Fee status</dt>
-            <dd>{psbt?humanize(psbt.fee.status):'Unavailable'}</dd>
-          </div>
-          <div>
-            <dt>Fee (sats)</dt>
-            <dd>{display(psbt?psbt.fee.fee_sats:'fee_sats' in inspection?inspection.fee_sats:null)}</dd>
-          </div>
+          {psbt?(
+            <>
+              <div>
+                <dt>Signing state</dt>
+                <dd>{humanize(psbt.signing_state)}</dd>
+              </div>
+              <div>
+                <dt>Fee status</dt>
+                <dd>{humanize(psbt.fee.status)}</dd>
+              </div>
+              <div>
+                <dt>Fee (sats)</dt>
+                <dd>{display(psbt.fee.fee_sats)}</dd>
+              </div>
+            </>
+          ):(
+            <>
+              <div>
+                <dt>Version</dt>
+                <dd>{'version' in inspection ? inspection.version : 'Unavailable'}</dd>
+              </div>
+              <div>
+                <dt>Locktime</dt>
+                <dd>{'locktime' in inspection ? inspection.locktime : 'Unavailable'}</dd>
+              </div>
+              <div>
+                <dt>Virtual size</dt>
+                <dd>{'vsize_vb' in inspection ? `${inspection.vsize_vb} vB (${inspection.size_bytes} B)` : 'Unavailable'}</dd>
+              </div>
+              <div>
+                <dt>Weight</dt>
+                <dd>{'weight_wu' in inspection ? `${inspection.weight_wu} WU` : 'Unavailable'}</dd>
+              </div>
+              <div>
+                <dt>Input total</dt>
+                <dd>{'total_input_sats' in inspection && inspection.total_input_sats != null ? `${inspection.total_input_sats.toLocaleString()} sats` : 'Unavailable'}</dd>
+              </div>
+              <div>
+                <dt>Output total</dt>
+                <dd>{`${inspection.total_output_sats.toLocaleString()} sats`}</dd>
+              </div>
+              <div>
+                <dt>Fee (sats)</dt>
+                <dd>{'fee_sats' in inspection && inspection.fee_sats != null ? `${inspection.fee_sats.toLocaleString()} sats` : 'Unavailable'}</dd>
+              </div>
+              <div>
+                <dt>Fee rate</dt>
+                <dd>{'fee_rate' in inspection && inspection.fee_rate ? `${inspection.fee_rate.sat_per_vb} sat/vB` : 'Unavailable'}</dd>
+              </div>
+            </>
+          )}
           <div>
             <dt>Inputs</dt>
             <dd>{inspection.input_count}</dd>
@@ -235,11 +317,74 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
 
         <h4>Inputs</h4>
         {inspection.inputs.map(input=>(
-          <details key={input.index} className="fact-details">
+          <details key={input.index} className="fact-details" open={inspection.inputs.length === 1}>
             <summary>
               Input {input.index} — {input.previous_txid.slice(0,12)}…:{input.previous_vout}
             </summary>
-            <Facts value={input}/>
+            <div className="input-detail-content">
+              <dl className="facts-overview">
+                <div>
+                  <dt>Previous Outpoint</dt>
+                  <dd className="hash-value">{input.previous_txid}:{input.previous_vout}</dd>
+                </div>
+                <div>
+                  <dt>Sequence</dt>
+                  <dd>{input.sequence}</dd>
+                </div>
+                <div>
+                  <dt>Explicit RBF</dt>
+                  <dd>{input.explicit_rbf ? 'Yes' : 'No'}</dd>
+                </div>
+                {'script_sig_hex' in input && (
+                  <div>
+                    <dt>ScriptSig Hex</dt>
+                    <dd className="hash-value">{input.script_sig_hex || 'None (empty)'}</dd>
+                  </div>
+                )}
+                {'script_sig_asm' in input && input.script_sig_asm !== undefined && (
+                  <div>
+                    <dt>ScriptSig Disassembly</dt>
+                    <dd><code className="asm-code">{input.script_sig_asm || 'None (empty)'}</code></dd>
+                  </div>
+                )}
+                {'witness_item_count' in input && (
+                  <div>
+                    <dt>Witness items</dt>
+                    <dd>{input.witness_item_count} item(s)</dd>
+                  </div>
+                )}
+              </dl>
+
+              {'resolved_prevout' in input && input.resolved_prevout && (
+                <div className="prevout-card">
+                  <div className="prevout-header">
+                    <span className="prevout-tag">Resolved Spent Prevout</span>
+                    <strong className="prevout-value">{input.resolved_prevout.value_sats.toLocaleString()} sats</strong>
+                  </div>
+                  <dl className="prevout-facts">
+                    <div>
+                      <dt>Address</dt>
+                      <dd className="hash-value">{input.resolved_prevout.address ?? 'Unavailable'}</dd>
+                    </div>
+                    <div>
+                      <dt>ScriptPubKey Hex</dt>
+                      <dd className="hash-value">{input.resolved_prevout.script_pubkey_hex}</dd>
+                    </div>
+                    {input.resolved_prevout.script_pubkey_asm && (
+                      <div>
+                        <dt>ScriptPubKey Disassembly</dt>
+                        <dd><code className="asm-code">{input.resolved_prevout.script_pubkey_asm}</code></dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              <details className="nested-details">
+                <summary>Raw input facts</summary>
+                <Facts value={input}/>
+              </details>
+            </div>
           </details>
         ))}
 
@@ -250,6 +395,7 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
               <tr>
                 <th>Index</th>
                 <th>Value (sats)</th>
+                <th>Address</th>
                 <th>Script type</th>
               </tr>
             </thead>
@@ -257,7 +403,10 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
               {inspection.outputs.map(output=>(
                 <tr key={output.index}>
                   <td>{output.index}</td>
-                  <td>{output.value_sats}</td>
+                  <td>{output.value_sats.toLocaleString()}</td>
+                  <td className="table-address">
+                    {output.address ? <code className="address-code">{output.address}</code> : <span className="muted">Unavailable</span>}
+                  </td>
                   <td><code className="table-script">{output.script_type}</code></td>
                 </tr>
               ))}
@@ -266,9 +415,38 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
         </div>
 
         {inspection.outputs.map(output=>(
-          <details key={output.index} className="fact-details">
+          <details key={output.index} className="fact-details" open={inspection.outputs.length === 1}>
             <summary>Output {output.index} details</summary>
-            <Facts value={output}/>
+            <div className="output-detail-content">
+              <dl className="facts-overview">
+                <div>
+                  <dt>Value</dt>
+                  <dd>{output.value_sats.toLocaleString()} sats</dd>
+                </div>
+                <div>
+                  <dt>Address</dt>
+                  <dd className="hash-value">{output.address ?? 'Unavailable'}</dd>
+                </div>
+                <div>
+                  <dt>Script Type</dt>
+                  <dd><code className="table-script">{output.script_type}</code></dd>
+                </div>
+                <div>
+                  <dt>ScriptPubKey Hex</dt>
+                  <dd className="hash-value">{output.script_pubkey_hex}</dd>
+                </div>
+                {'script_pubkey_asm' in output && output.script_pubkey_asm !== undefined && (
+                  <div>
+                    <dt>ScriptPubKey Disassembly</dt>
+                    <dd><code className="asm-code">{output.script_pubkey_asm || 'None'}</code></dd>
+                  </div>
+                )}
+              </dl>
+              <details className="nested-details">
+                <summary>Raw output facts</summary>
+                <Facts value={output}/>
+              </details>
+            </div>
           </details>
         ))}
 

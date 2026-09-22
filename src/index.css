@@ -2348,6 +2348,230 @@ th {
 }
 
 /* ==========================================================================
+   Transaction Explorer & Chain Context Styles
+   ========================================================================== */
+
+.txid-input {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.84rem;
+  letter-spacing: -0.02em;
+}
+
+.chain-context-section {
+  margin-bottom: 24px;
+}
+
+.chain-context-card {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  transition: border-color 0.2s ease;
+}
+
+.chain-context-card.status-confirmed {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04) 0%, var(--surface-alt) 100%);
+}
+
+.chain-context-card.status-mempool {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.04) 0%, var(--surface-alt) 100%);
+}
+
+.chain-context-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chain-context-title {
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.chain-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chain-status-badge.status-confirmed {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.chain-status-badge.status-mempool {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.chain-status-badge.status-unavailable {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.chain-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+}
+
+.chain-context-grid dt {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.chain-context-grid dd {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.chain-context-grid .block-hash-row {
+  grid-column: 1 / -1;
+}
+
+.badge-network {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.76rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-bright);
+  color: #93c5fd;
+}
+
+.prevout-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 12px 0 10px;
+}
+
+.prevout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.prevout-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #38bdf8;
+}
+
+.prevout-value {
+  font-size: 0.88rem;
+  color: #ffffff;
+}
+
+.prevout-facts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.prevout-facts dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  margin-bottom: 2px;
+}
+
+.prevout-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.prevout-missing {
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-style: italic;
+  margin: 8px 0;
+}
+
+.asm-code {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: #cbd5e1;
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.table-address .address-code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.74rem;
+  color: #bfdbfe;
+  overflow-wrap: anywhere;
+}
+
+.facts-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  margin: 8px 0 14px;
+}
+
+.facts-overview dt {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.facts-overview dd {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.nested-details {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.nested-details summary {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+/* ==========================================================================
    Policy Rules Page
    ========================================================================== */
 
@@ -2744,7 +2968,9 @@ th {
     gap: 6px;
   }
 
-  .summary-facts {
+  .summary-facts,
+  .chain-context-grid,
+  .facts-overview {
     grid-template-columns: 1fr;
   }
 }

@@ -12,10 +12,11 @@ function wholeNumber(text:string,label:string,max=Number.MAX_SAFE_INTEGER):numbe
 }
 
 export function Inspector({api}:{api:ApiClient}) {
-  const [mode,setMode]=useState<'psbt'|'raw'>('psbt')
+  const [mode,setMode]=useState<'psbt'|'raw'|'txid'>('psbt')
   const [operation,setOperation]=useState('preflight')
   const [text,setText]=useState('')
   const [sample,setSample]=useState<'pass'|'review'|'block'>('pass')
+  const [rawNetwork,setRawNetwork]=useState('')
   const [report,setReport]=useState<Report|null>(null)
   const [error,setError]=useState('')
   const [loading,setLoading]=useState(false)
@@ -52,6 +53,7 @@ export function Inspector({api}:{api:ApiClient}) {
   function clear(){
     invalidate()
     setText('')
+    setRawNetwork('')
     setExternal('')
     setInternal('')
     setWallet(false)
@@ -86,13 +88,25 @@ export function Inspector({api}:{api:ApiClient}) {
     const current=generation.current
     setLoading(true)
     try{
-      validateText(text)
       let result:Report
-      if(mode==='raw'){
-        result=await api.inspectTransaction(text.trim())
+      if(mode==='txid'){
+        const cleanTxid=text.trim()
+        if(!cleanTxid)throw new Error('Paste a transaction ID or choose a sample first.')
+        if(!/^[0-9a-fA-F]{64}$/.test(cleanTxid)){
+          throw new Error('Please enter a valid 64-character hexadecimal transaction ID.')
+        }
+        if(caps&&!caps.node_context_available){
+          throw new Error('TXID lookup requires a Bitcoin Core node configured on the TxSignX API.')
+        }
+        result=await api.inspectTxid(cleanTxid)
+      }else if(mode==='raw'){
+        validateText(text)
+        result=await api.inspectTransaction(text.trim(),rawNetwork.trim()||undefined)
       }else if(operation==='inspect'){
+        validateText(text)
         result=await api.inspectPsbt(text.trim())
       }else{
+        validateText(text)
         const request:PreflightRequest={psbt:text.trim()}
         if(fee||ratio){
           request.policy={
@@ -126,8 +140,8 @@ export function Inspector({api}:{api:ApiClient}) {
   }
 
   const actionButtonText = loading
-    ? (mode === 'raw' ? 'Inspecting Transaction…' : operation === 'inspect' ? 'Inspecting PSBT…' : 'Running Preflight…')
-    : (mode === 'raw' ? 'Inspect Transaction' : operation === 'inspect' ? 'Inspect PSBT' : 'Run Preflight')
+    ? (mode === 'raw' ? 'Inspecting Transaction…' : mode === 'txid' ? 'Fetching Transaction…' : operation === 'inspect' ? 'Inspecting PSBT…' : 'Running Preflight…')
+    : (mode === 'raw' ? 'Inspect Transaction' : mode === 'txid' ? 'Lookup Transaction' : operation === 'inspect' ? 'Inspect PSBT' : 'Run Preflight')
 
   return (
     <div className="inspector-page">
@@ -160,65 +174,122 @@ export function Inspector({api}:{api:ApiClient}) {
             >
               Raw Transaction
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode==='txid'}
+              aria-pressed={mode==='txid'}
+              disabled={loading}
+              onClick={()=>{clear();setMode('txid')}}
+            >
+              Transaction ID
+            </button>
           </div>
 
           <div className="security-notice">
             <span className="notice-icon" aria-hidden="true">🔒</span>
             <p className="privacy">
-              Inputs are sent strictly to your configured TxSignX API and processed in-memory. Nothing is stored in browser cache or localStorage. Use public descriptors only. Never enter private keys or seed phrases.
+              Inputs are sent strictly to your configured TxSignX API and processed in-memory. Nothing is stored in browser cache or localStorage. TXID lookups query only the server-configured Bitcoin Core node. Use public descriptors only. Never enter private keys or seed phrases.
             </p>
           </div>
           <p className="api-address">Connected API: <code>{api.baseUrl}</code></p>
 
           <form onSubmit={analyze} autoComplete="off">
             <fieldset disabled={loading} className="form-fields">
-              <label>
-                {mode==='psbt'?'PSBT base64':'Raw transaction hex'}
-                <textarea
-                  value={text}
-                  onChange={e=>{invalidate();setText(e.target.value)}}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  placeholder={mode==='psbt'?'Paste a BIP174 PSBT v0 in base64…':'Paste a raw Bitcoin transaction in hex…'}
-                  rows={8}
-                />
-              </label>
-
-              <div className="file-row">
-                <label>
-                  Upload text file
-                  <input ref={upload} type="file" accept=".txt,.b64,.hex,text/plain" onChange={loadFile}/>
-                </label>
-                <span className="muted">Text only · 1 MiB maximum</span>
-              </div>
-
-              <div className="sample-row">
-                {mode==='psbt'&&(
+              {mode==='txid'?(
+                <>
                   <label>
-                    Public sample
-                    <select value={sample} onChange={e=>setSample(e.target.value as typeof sample)}>
-                      <option value="pass">PASS — ordinary fee</option>
-                      <option value="review">REVIEW — unusual sighash</option>
-                      <option value="block">BLOCK — excessive fee</option>
-                    </select>
+                    Transaction ID
+                    <input
+                      type="text"
+                      className="txid-input"
+                      value={text}
+                      onChange={e=>{invalidate();setText(e.target.value)}}
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      placeholder="64-character Bitcoin transaction ID…"
+                    />
                   </label>
-                )}
-                <button
-                  type="button"
-                  className="button secondary"
-                  onClick={()=>{
-                    clear()
-                    setText(mode==='raw'?samples.raw:samples[sample])
-                    setOperation('preflight')
-                  }}
-                >
-                  Use sample
-                </button>
-              </div>
-              <p className="muted small">
-                Synthetic fixtures evaluated live by your API. Default policy without wallet or node context.
-              </p>
+                  {caps?.node_context_available===false&&(
+                    <p className="muted status-note" role="note">
+                      TXID lookup requires a Bitcoin Core node configured on the TxSignX API.
+                    </p>
+                  )}
+                </>
+              ):(
+                <label>
+                  {mode==='psbt'?'PSBT base64':'Raw transaction hex'}
+                  <textarea
+                    value={text}
+                    onChange={e=>{invalidate();setText(e.target.value)}}
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    placeholder={mode==='psbt'?'Paste a BIP174 PSBT v0 in base64…':'Paste a raw Bitcoin transaction in hex…'}
+                    rows={8}
+                  />
+                </label>
+              )}
+
+              {mode==='raw'&&(
+                <label>
+                  Network for address derivation (optional)
+                  <select
+                    value={rawNetwork}
+                    onChange={e=>{invalidate();setRawNetwork(e.target.value)}}
+                  >
+                    <option value="">No network (raw structure only)</option>
+                    <option value="bitcoin">Bitcoin Mainnet (bitcoin)</option>
+                    <option value="testnet">Testnet (testnet)</option>
+                    <option value="testnet4">Testnet4 (testnet4)</option>
+                    <option value="signet">Signet (signet)</option>
+                    <option value="regtest">Regtest (regtest)</option>
+                  </select>
+                  <span className="muted small">
+                    Raw transaction data does not encode Bitcoin network. Network is only used for address rendering.
+                  </span>
+                </label>
+              )}
+
+              {mode!=='txid'&&(
+                <>
+                  <div className="file-row">
+                    <label>
+                      Upload text file
+                      <input ref={upload} type="file" accept=".txt,.b64,.hex,text/plain" onChange={loadFile}/>
+                    </label>
+                    <span className="muted">Text only · 1 MiB maximum</span>
+                  </div>
+
+                  <div className="sample-row">
+                    {mode==='psbt'&&(
+                      <label>
+                        Public sample
+                        <select value={sample} onChange={e=>setSample(e.target.value as typeof sample)}>
+                          <option value="pass">PASS — ordinary fee</option>
+                          <option value="review">REVIEW — unusual sighash</option>
+                          <option value="block">BLOCK — excessive fee</option>
+                        </select>
+                      </label>
+                    )}
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={()=>{
+                        clear()
+                        setText(mode==='raw'?samples.raw:samples[sample])
+                        setOperation('preflight')
+                      }}
+                    >
+                      Use sample
+                    </button>
+                  </div>
+                  <p className="muted small">
+                    Synthetic fixtures evaluated live by your API. Default policy without wallet or node context.
+                  </p>
+                </>
+              )}
 
               {mode==='psbt'&&(
                 <>
@@ -302,7 +373,11 @@ export function Inspector({api}:{api:ApiClient}) {
                 </>
               )}
 
-              <button className="primary analyze" type="submit" disabled={loading}>
+              <button
+                className="primary analyze"
+                type="submit"
+                disabled={loading || (mode==='txid' && caps?.node_context_available===false)}
+              >
                 {actionButtonText}
               </button>
             </fieldset>
@@ -313,7 +388,15 @@ export function Inspector({api}:{api:ApiClient}) {
           {loading&&(
             <div className="scanning-indicator" role="status">
               <div className="scanning-bar" aria-hidden="true" />
-              <span>Analyzing with the Rust security engine…</span>
+              <span>
+                {mode==='raw'
+                  ?'Inspecting transaction…'
+                  :mode==='txid'
+                  ?'Fetching transaction context…'
+                  :operation==='inspect'
+                  ?'Inspecting PSBT…'
+                  :'Running deterministic preflight…'}
+              </span>
             </div>
           )}
         </section>
@@ -327,8 +410,22 @@ export function Inspector({api}:{api:ApiClient}) {
                   <div className="pulse-ring" />
                   <span className="pulse-dot" />
                 </div>
-                <h3>{mode === 'raw' ? 'Inspecting transaction…' : 'Analyzing PSBT…'}</h3>
-                <p className="muted">Evaluating deterministic policy rules in memory via connected Rust API.</p>
+                <h3>
+                  {mode==='raw'
+                    ?'Inspecting transaction…'
+                    :mode==='txid'
+                    ?'Fetching transaction context…'
+                    :operation==='inspect'
+                    ?'Inspecting PSBT…'
+                    :'Analyzing PSBT…'}
+                </h3>
+                <p className="muted">
+                  {mode==='raw'||mode==='txid'
+                    ?'Decoding transaction structure and resolving chain context via connected Rust API.'
+                    :operation==='inspect'
+                    ?'Decoding transaction structure via connected Rust API.'
+                    :'Evaluating deterministic policy rules in memory via connected Rust API.'}
+                </p>
               </div>
             </section>
           ) : report ? (
@@ -349,14 +446,14 @@ export function Inspector({api}:{api:ApiClient}) {
                 </svg>
               </div>
               <h2>Understand what you are signing.</h2>
-              <p>Paste an unsigned PSBT or raw transaction to evaluate against pre-sign security policies. The report cleanly separates observed facts, policy findings, and checks requiring additional context.</p>
+              <p>Inspect a PSBT, raw transaction, or transaction ID before signing.</p>
               <div className="empty-chips">
                 <span className="chip-feat">Factual Inspection</span>
                 <span className="chip-feat">15 Deterministic Rules</span>
                 <span className="chip-feat">Zero Key Access</span>
               </div>
               <p className="muted small">
-                Preflight inspection only. No signing, finalization, or broadcasting capabilities exist in this web application.
+                Transaction Explorer & preflight inspection only. No signing, finalization, or broadcasting capabilities exist in this web application.
               </p>
             </section>
           )}

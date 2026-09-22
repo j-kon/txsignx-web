@@ -1,0 +1,68 @@
+{
+  "txid": "8c0664cc2930678c6808cf093fd58105c9f32894bf52199fd4ed82d1911e2212",
+  "wtxid": "8c0664cc2930678c6808cf093fd58105c9f32894bf52199fd4ed82d1911e2212",
+  "version": 2,
+  "locktime": 0,
+  "input_count": 1,
+  "output_count": 2,
+  "size_bytes": 141,
+  "weight_wu": 441,
+  "vsize_vb": 111,
+  "has_witness": true,
+  "explicit_rbf": true,
+  "total_input_sats": 200000,
+  "total_output_sats": 195000,
+  "fee_sats": 5000,
+  "fee_rate": {
+    "fee_sats": 5000,
+    "vsize_vb": 111,
+    "sat_per_vb": 45.05
+  },
+  "chain_context": {
+    "status": "mempool",
+    "network": "testnet4",
+    "confirmations": 0,
+    "block_hash": null
+  },
+  "inputs": [
+    {
+      "index": 0,
+      "previous_txid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "previous_vout": 1,
+      "sequence": 4294967293,
+      "script_sig_hex": "",
+      "script_sig_asm": "",
+      "script_sig_size_bytes": 0,
+      "witness_item_count": 2,
+      "witness_items": [],
+      "explicit_rbf": true,
+      "resolved_prevout": {
+        "value_sats": 200000,
+        "script_pubkey_hex": "00140505050505050505050505050505050505050505",
+        "script_pubkey_asm": "OP_0 OP_PUSHBYTES_20 0505050505050505050505050505050505050505",
+        "script_type": "p2wpkh",
+        "address": "tb1qpd3xxxxpqqz7t3xxxxpqqz7t3xxxxpqqz073v6"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "index": 0,
+      "value_sats": 150000,
+      "script_pubkey_hex": "00140606060606060606060606060606060606060606",
+      "script_pubkey_asm": "OP_0 OP_PUSHBYTES_20 0606060606060606060606060606060606060606",
+      "script_pubkey_size_bytes": 22,
+      "script_type": "p2wpkh",
+      "address": "tb1qqzzxxxxpqqz7t3xxxxpqqz7t3xxxxpqq5zwy4d"
+    },
+    {
+      "index": 1,
+      "value_sats": 45000,
+      "script_pubkey_hex": "00140707070707070707070707070707070707070707",
+      "script_pubkey_asm": "OP_0 OP_PUSHBYTES_20 0707070707070707070707070707070707070707",
+      "script_pubkey_size_bytes": 22,
+      "script_type": "p2wpkh",
+      "address": "tb1qqxxxxxxxpqqz7t3xxxxpqqz7t3xxxxpqq3l9g9v"
+    }
+  ]
+}

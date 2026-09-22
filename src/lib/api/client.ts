@@ -11,8 +11,9 @@ export type PreflightRequest = {
 }
 const messages: Record<string,string> = {
   invalid_psbt:'The supplied PSBT could not be inspected.', invalid_transaction:'The supplied raw transaction could not be inspected.',
+  invalid_txid:'The supplied transaction ID is invalid. Enter a 64-character hexadecimal TXID.', invalid_network:'The selected Bitcoin network is invalid or unsupported.',
   invalid_wallet:'Wallet context was rejected. Check public descriptors, network and derivation window.', invalid_policy:'Policy thresholds were rejected.',
-  node_unavailable:'The configured node is unavailable. Check the local API configuration.', node_not_configured:'No node is configured on this API.',
+  node_unavailable:'The configured node is unavailable. Check the local API configuration.', node_not_configured:'TXID lookup requires a Bitcoin Core node configured on the TxSignX API.',
   invalid_context:'The supplied context is invalid. Check wallet and node settings.', timeout:'Analysis timed out. Reduce the input or try again.', busy:'The API is busy. Try again shortly.',
 }
 export const textBytes = (text:string) => new TextEncoder().encode(text).byteLength
@@ -22,7 +23,7 @@ export function validateText(text:string) {
 }
 function safeNumbers(value:unknown, depth=0):void {
   if (depth>100) throw malformed()
-  if (typeof value==='number' && !Number.isSafeInteger(value)) throw malformed()
+  if (typeof value==='number' && (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER)) throw malformed()
   if (value && typeof value==='object') for (const child of Object.values(value)) safeNumbers(child,depth+1)
 }
 async function readBounded(response:Response) {
@@ -74,7 +75,16 @@ export class ApiClient {
   }
   capabilities() {return this.request('capabilities',capabilitiesSchema)}
   policies() {return this.request('policies',catalogSchema)}
-  async inspectTransaction(raw_transaction:string) {validateText(raw_transaction);return this.request('transactions/inspect',transactionSchema,{raw_transaction})}
+  async inspectTransaction(raw_transaction:string, network?:string) {
+    validateText(raw_transaction)
+    const body: {raw_transaction:string; network?:string} = {raw_transaction}
+    if (network) body.network = network
+    return this.request('transactions/inspect',transactionSchema,body)
+  }
+  async inspectTxid(txid:string) {
+    validateText(txid)
+    return this.request('transactions/inspect',transactionSchema,{txid:txid.trim()})
+  }
   async inspectPsbt(psbt:string) {validateText(psbt);return this.request('psbt/inspect',psbtSchema,{psbt})}
   async preflight(request:PreflightRequest) {validateText(request.psbt);return this.request('psbt/preflight',preflightSchema,request)}
 }

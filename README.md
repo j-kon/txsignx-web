@@ -6,7 +6,7 @@ Web presentation layer for TxSignX Bitcoin transaction and PSBT security analysi
 
 > **Positioning:** Not another wallet. A security layer for wallets.
 
-TxSignX Web connects to the local `txsignx-api` HTTP service to inspect raw Bitcoin transactions and PSBTs, evaluate deterministic security policies, and display findings, risk levels, and rule coverage before signing.
+TxSignX Web connects to the local `txsignx-api` HTTP service to inspect PSBTs, raw transactions, and transaction IDs (via server-configured Bitcoin Core node), evaluate deterministic security policies, and display findings, risk levels, and rule coverage before signing.
 
 ## Architecture and Authority
 
@@ -19,12 +19,12 @@ txsignx-api (Local Axum service)
   ↓
 txsignx-core + txsignx-wallet + txsignx-node + txsignx-policy
   ↓
-PolicyReport
+TransactionReport / PsbtReport / PreflightReport
   ↓
-PASS / REVIEW / BLOCK
+Transaction Explorer / Preflight Policy
 ```
 
-All decisions, findings, and evaluation coverage are returned directly by the Rust policy engine (`txsignx-policy`).
+All Bitcoin interpretation, script disassembly, address derivation, and security policies are evaluated directly by the Rust engine (`txsignx-core`, `txsignx-policy`).
 
 ## Development Setup
 
@@ -61,15 +61,16 @@ npm test        # Run Vitest test suite
 ## User Flow
 
 1. **Home**: High-level problem statement, trust boundaries, and real preflight preview.
-2. **Inspector**: Paste raw transaction hex or PSBT base64, load public synthetic fixtures, or upload a `.psbt`/`.hex` file.
+2. **Inspector**: Inspect PSBT v0 base64, raw transaction hex (with optional network address derivation), or transaction ID (via server-configured Bitcoin Core node), load public synthetic fixtures, or upload a `.b64`/`.hex` text file.
 3. **Preflight**: Configure optional fee thresholds, public wallet descriptors (with derivation window and expected change output indexes), and local node verification.
-4. **Inspection & Preflight Results**: View consensus facts, fee status, signing state, explicit RBF signaling, policy findings, and distinct rule coverage sections (**Evaluated**, **Partially Evaluated**, and **Not Evaluated**).
+4. **Inspection & Preflight Results**: View Transaction Explorer factual observations (inputs, prevouts, addresses, script disassembly opcodes, fees, vsize, weight, locktime, and confirmed/mempool chain context) or preflight policy evaluation (PASS / REVIEW / BLOCK with findings and rule coverage).
 5. **Policies**: Browse the live active and deferred policy registry fetched directly from Rust.
 6. **Report Export**: Explicitly copy or download structured JSON reports.
 
 ## Security and Privacy Boundaries
 
 - **No Private Keys**: Never enter private keys, seed phrases, WIF, `xprv`, or `tprv`. Only public descriptors (`xpub`/`tpub`) are supported.
+- **Zero Node Credentials in Browser**: Bitcoin Core RPC credentials reside exclusively on the server running `txsignx-api`. The web interface never accepts, manages, or stores node credentials.
 - **No Local Storage**: Transactions, PSBTs, and descriptors are held only in memory and are never persisted to `localStorage`, `sessionStorage`, cookies, or browser history URLs.
 - **No Console Dumps**: PSBTs and descriptor contents are never logged to the browser console.
 - **No Web Broadcast**: The web app has no broadcast button and does not send transactions to any public network.

@@ -1,0 +1,70 @@
+{
+  "txid": "7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101",
+  "wtxid": "7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101",
+  "version": 2,
+  "locktime": 0,
+  "input_count": 1,
+  "output_count": 1,
+  "size_bytes": 141,
+  "weight_wu": 441,
+  "vsize_vb": 111,
+  "has_witness": true,
+  "explicit_rbf": false,
+  "total_input_sats": 100000,
+  "total_output_sats": 80000,
+  "fee_sats": 20000,
+  "fee_rate": {
+    "fee_sats": 20000,
+    "vsize_vb": 111,
+    "sat_per_vb": 180.18
+  },
+  "chain_context": {
+    "status": "confirmed",
+    "network": "regtest",
+    "confirmations": 6,
+    "block_hash": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+  },
+  "inputs": [
+    {
+      "index": 0,
+      "previous_txid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previous_vout": 0,
+      "sequence": 4294967295,
+      "script_sig_hex": "",
+      "script_sig_asm": "",
+      "script_sig_size_bytes": 0,
+      "witness_item_count": 2,
+      "witness_items": [
+        {
+          "index": 0,
+          "size_bytes": 71,
+          "hex": "3044022011111111111111111111111111111111111111111111111111111111111111110220222222222222222222222222222222222222222222222222222222222222222201"
+        },
+        {
+          "index": 1,
+          "size_bytes": 33,
+          "hex": "033333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "explicit_rbf": false,
+      "resolved_prevout": {
+        "value_sats": 100000,
+        "script_pubkey_hex": "00140303030303030303030303030303030303030303",
+        "script_pubkey_asm": "OP_0 OP_PUSHBYTES_20 0303030303030303030303030303030303030303",
+        "script_type": "p2wpkh",
+        "address": "bcrt1qpd3xxxxpqqz7t3xxxxpqqz7t3xxxxpqqe72u7x"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "index": 0,
+      "value_sats": 80000,
+      "script_pubkey_hex": "00140404040404040404040404040404040404040404",
+      "script_pubkey_asm": "OP_0 OP_PUSHBYTES_20 0404040404040404040404040404040404040404",
+      "script_pubkey_size_bytes": 22,
+      "script_type": "p2wpkh",
+      "address": "bcrt1qqzzxxxxpqqz7t3xxxxpqqz7t3xxxxpqq6xvy0a"
+    }
+  ]
+}

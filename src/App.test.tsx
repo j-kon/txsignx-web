@@ -2,6 +2,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest'
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import App from './App'
+import { ApiClient } from './lib/api/client'
 import pass from './test/fixtures/pass.json'
 import review from './test/fixtures/review.json'
 import block from './test/fixtures/block.json'
@@ -29,7 +30,92 @@ const caps={
   deferred_rules:2
 }
 
+const defaultSnapshot = {
+  network: 'regtest',
+  tip_height: 101,
+  tip_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+  recent_blocks: [
+    {
+      height: 101,
+      hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      tx_count: 5,
+      weight: 4200,
+      size: 1500,
+      timestamp: 1700000000
+    },
+    {
+      height: 100,
+      hash: '000000000029d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce270',
+      tx_count: 1,
+      weight: 1200,
+      size: 300,
+      timestamp: 1699999400
+    }
+  ],
+  mempool_tx_count: 2,
+  mempool_size_bytes: 1240,
+  latest_transactions: [
+    {
+      txid: '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101',
+      wtxid: '561d35cd60944685cbc9155bb5ea54de63aa4ec39c4ac3f2aa936f127cbeccd1',
+      vsize: 140,
+      weight: 560,
+      fee_sats: 1000,
+      fee_rate: 7.14,
+      input_count: 1,
+      output_count: 2,
+      explicit_rbf: true,
+      has_witness: true,
+      first_seen_at: 1700000010,
+      depends: []
+    },
+    {
+      txid: '8c0664cc2930678c6808cf093fd58105c9f32894bf52199fd4ed82d1911e2212',
+      vsize: 210,
+      weight: 840,
+      fee_sats: 2500,
+      fee_rate: 11.9,
+      input_count: 2,
+      output_count: 2,
+      explicit_rbf: false,
+      has_witness: true,
+      first_seen_at: 1700000020,
+      depends: ['7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101']
+    }
+  ]
+}
+
+class MockWebSocket {
+  static instances: MockWebSocket[] = []
+  onopen: (() => void) | null = null
+  onclose: (() => void) | null = null
+  onerror: (() => void) | null = null
+  onmessage: ((event: { data: string }) => void) | null = null
+  readyState = 0
+  url: string
+
+  constructor(url: string) {
+    this.url = url
+    MockWebSocket.instances.push(this)
+    setTimeout(() => {
+      this.readyState = 1
+      this.onopen?.()
+    }, 10)
+  }
+
+  send = vi.fn()
+  close = vi.fn(() => {
+    this.readyState = 3
+    this.onclose?.()
+  })
+
+  emit(data: unknown) {
+    this.onmessage?.({ data: JSON.stringify(data) })
+  }
+}
+
 let currentCaps={...caps}
+let liveSnapshotData = JSON.parse(JSON.stringify(defaultSnapshot))
 let report:unknown=pass
 let txReport:unknown=raw
 let error=false
@@ -37,17 +123,23 @@ let error=false
 beforeEach(()=>{
   window.location.hash=''
   currentCaps={...caps}
+  liveSnapshotData = JSON.parse(JSON.stringify(defaultSnapshot))
   report=pass
   txReport=raw
   error=false
+  MockWebSocket.instances = []
+  vi.stubGlobal('WebSocket', MockWebSocket)
   vi.stubGlobal('fetch',vi.fn(async (url:string)=>new Response(JSON.stringify(
     url.endsWith('capabilities')?currentCaps
     :url.endsWith('policies')?policies
+    :url.endsWith('live/snapshot')?liveSnapshotData
+    :url.endsWith('blocks/recent')?liveSnapshotData.recent_blocks
+    :url.endsWith('mempool/summary')?{tx_count:liveSnapshotData.mempool_tx_count,size_bytes:liveSnapshotData.mempool_size_bytes}
     :error?{error:{code:'invalid_psbt',message:'NEVER ECHO THIS'}}
     :url.endsWith('transactions/inspect')?txReport
     :url.endsWith('psbt/inspect')?psbt
     :report
-  ),{status:error&&!url.endsWith('capabilities')?422:200,headers:{'Content-Type':'application/json'}})))
+  ),{status:error&&!url.endsWith('capabilities')&&!url.endsWith('live/snapshot')?422:200,headers:{'Content-Type':'application/json'}})))
 })
 
 afterEach(()=>{
@@ -57,9 +149,8 @@ afterEach(()=>{
 })
 
 async function openInspector(){
-  window.location.hash=''
+  window.location.hash='#inspector'
   render(<App/>)
-  fireEvent.click(screen.getByRole('link',{name:/Open Inspector/}))
   await screen.findByLabelText('PSBT base64')
 }
 
@@ -70,6 +161,7 @@ async function analyze(){
 
 describe('product flows',()=>{
   it('renders the actual positioning, orbital visual, and public synthetic preview',()=>{
+    window.location.hash='#about'
     render(<App/>)
     expect(screen.getByRole('heading',{name:'Bitcoin transaction security before signing.'})).toBeTruthy()
     expect(screen.getAllByText('Public synthetic example').length).toBeGreaterThanOrEqual(1)
@@ -166,7 +258,7 @@ describe('product flows',()=>{
 
   it('shows the real policy registry with filtering',async()=>{
     render(<App/>)
-    fireEvent.click(screen.getByRole('link',{name:'Policy rules'}))
+    fireEvent.click(screen.getByRole('link',{name:/Polic/}))
     expect(await screen.findByText('TG017')).toBeTruthy()
     expect(screen.getByText('TG007')).toBeTruthy()
     expect(screen.getAllByText('Deferred').length).toBeGreaterThan(0)
@@ -564,5 +656,250 @@ describe('product flows',()=>{
     // Fee and fee rate still available in mempool
     expect(screen.getAllByText('5,000 sats').length).toBeGreaterThan(0)
     expect(screen.getByText('45.05 sat/vB')).toBeTruthy()
+  })
+})
+
+describe('Live Chain Observability Interface', () => {
+  it('loads live snapshot directly from ApiClient', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    const snap = await api.liveSnapshot()
+    expect(snap.network).toBe('regtest')
+    expect(snap.tip_height).toBe(101)
+  })
+
+  it('renders Live Chain as default entry experience with stats, recent blocks, and mempool flow', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'Live Bitcoin Chain & Mempool' })).toBeTruthy()
+    expect(screen.getByPlaceholderText(/Search transaction ID/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Inspect manually' })).toBeTruthy()
+
+    expect(await screen.findByText('regtest')).toBeTruthy()
+    expect(screen.getAllByText(/#101/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/\(1\.2\s*kB\)/i)).toBeTruthy()
+    expect(screen.getAllByTitle('000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f').length).toBeGreaterThan(0)
+  })
+
+  it('renders recent blocks with height, short hash, count, weight, and timestamp/age', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Recent Blocks' })).toBeTruthy()
+    expect(screen.getAllByText(/#101/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/#100/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('5').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('1').length).toBeGreaterThan(0)
+    expect(screen.getByText('4 kWU')).toBeTruthy()
+  })
+
+  it('renders mempool stats accurately', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    expect(await screen.findByText(/\(1\.2\s*kB\)/i)).toBeTruthy()
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0)
+  })
+
+  it('renders live transaction nodes with encoding legend', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'TxSignX Live Flow' })).toBeTruthy()
+    expect(screen.getByText(/Node width\/size = Virtual Size \(vB\)/)).toBeTruthy()
+    expect(screen.getByText(/Amber outline = BIP 125 Explicit RBF/)).toBeTruthy()
+    expect(screen.getByText(/SegWit witness data present/)).toBeTruthy()
+    expect(screen.getByText(/Numeric fee rate/)).toBeTruthy()
+
+    expect(await screen.findByText('7b055…1101')).toBeTruthy()
+    expect(screen.getByText('8c066…2212')).toBeTruthy()
+    expect(screen.getByText('140 vB')).toBeTruthy()
+    expect(screen.getByText('7.1 s/vB')).toBeTruthy()
+  })
+
+  it('opens transaction preview side drawer upon clicking a live node and verifies values', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    const txNode = await screen.findByText('7b055…1101')
+    fireEvent.click(txNode)
+
+    expect(await screen.findByRole('dialog', { name: 'Transaction Preview' })).toBeTruthy()
+    expect(screen.getByText('7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101')).toBeTruthy()
+    expect(screen.getByText('In Mempool (0 confirmations)')).toBeTruthy()
+    expect(screen.getAllByText('140 vB').length).toBeGreaterThan(0)
+    expect(screen.getByText('560 WU')).toBeTruthy()
+    expect(screen.getByText('1,000 sats')).toBeTruthy()
+    expect(screen.getAllByText('7.1 sat/vB').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('1').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0)
+    expect(screen.getByText('Explicit RBF Enabled')).toBeTruthy()
+    expect(screen.getByText('Yes (Witness Present)')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close preview drawer' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('clicks Explore Transaction from side drawer and opens Transaction Explorer report', async () => {
+    currentCaps = { ...caps, node_context_available: true }
+    txReport = txidConfirmed
+    window.location.hash = ''
+    render(<App />)
+
+    const txNode = await screen.findByText('7b055…1101')
+    fireEvent.click(txNode)
+
+    const exploreBtn = await screen.findByRole('button', { name: /Explore Transaction/ })
+    fireEvent.click(exploreBtn)
+
+    expect(await screen.findByRole('heading', { name: 'Transaction Explorer' })).toBeTruthy()
+    expect(screen.getByText('Bitcoin Core Node Verification')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Back to Live Chain/ }))
+    expect(await screen.findByRole('heading', { name: 'Live Bitcoin Chain & Mempool' })).toBeTruthy()
+  })
+
+  it('handles live transaction events via WebSocket stream', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    await screen.findByText('7b055…1101')
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+    expect(ws).toBeDefined()
+
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid: '9999999999999999999999999999999999999999999999999999999999999999',
+        vsize: 180,
+        weight: 720,
+        fee_sats: 1800,
+        fee_rate: 10.0,
+        input_count: 1,
+        output_count: 2,
+        explicit_rbf: false,
+        has_witness: true
+      }
+    })
+
+    expect(await screen.findByText('99999…9999')).toBeTruthy()
+    expect(screen.getByText('180 vB')).toBeTruthy()
+    expect(screen.getByText('10.0 s/vB')).toBeTruthy()
+  })
+
+  it('handles live block connected events via WebSocket stream', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    await screen.findAllByText(/#101/)
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+    expect(ws).toBeDefined()
+
+    ws.emit({
+      type: 'block_connected',
+      data: {
+        height: 102,
+        hash: '000000000039d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce271',
+        tx_count: 12,
+        weight: 9500,
+        size: 3200,
+        timestamp: 1700001000
+      }
+    })
+
+    const blocks102 = await screen.findAllByText(/#102/)
+    expect(blocks102.length).toBeGreaterThan(0)
+  })
+
+  it('supports universal search bar direct lookup into Transaction Explorer', async () => {
+    currentCaps = { ...caps, node_context_available: true }
+    txReport = txidConfirmed
+    window.location.hash = ''
+    render(<App />)
+
+    const searchInput = screen.getByPlaceholderText(/Search transaction ID/)
+    const validTxid = '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101'
+    fireEvent.change(searchInput, { target: { value: validTxid } })
+    fireEvent.click(screen.getByRole('button', { name: /Inspect TXID/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Transaction Explorer' })).toBeTruthy()
+    expect(screen.getByText('Bitcoin Core Node Verification')).toBeTruthy()
+  })
+
+  it('navigates to manual Inspector via Inspect manually button', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    const manualBtn = await screen.findByRole('button', { name: 'Inspect manually' })
+    fireEvent.click(manualBtn)
+
+    await screen.findByLabelText('PSBT base64')
+    expect(screen.getByRole('tab', { name: /PSBT v0/ })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /Raw Transaction/ })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /Transaction ID/ })).toBeTruthy()
+  })
+
+  it('renders polite empty mempool state when no transactions exist', async () => {
+    liveSnapshotData = {
+      ...defaultSnapshot,
+      mempool_tx_count: 0,
+      mempool_size_bytes: 0,
+      latest_transactions: []
+    }
+    window.location.hash = ''
+    render(<App />)
+
+    expect(await screen.findByText('Mempool is currently empty on this node')).toBeTruthy()
+    expect(screen.getByText(/Listening for new unconfirmed transactions/)).toBeTruthy()
+  })
+
+  it('renders safe node unavailable state when node is offline', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('capabilities')) return new Response(JSON.stringify(caps), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.endsWith('live/snapshot')) return new Response(JSON.stringify({ error: { code: 'node_unavailable', message: 'RPC down' } }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    window.location.hash = ''
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getByText(/Bitcoin Core Node Observation Notice/)).toBeTruthy()
+    expect(screen.getByText(/The configured node is unavailable/)).toBeTruthy()
+  })
+
+  it('toggles display mode between Live Flow and Transaction Flow Graph', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const graphToggle = screen.getByRole('radio', { name: /Transaction Flow Graph/ })
+    fireEvent.click(graphToggle)
+
+    expect(await screen.findByText(/Bounded in-mempool relationship graph/)).toBeTruthy()
+
+    const flowToggle = screen.getByRole('radio', { name: 'Live Flow' })
+    fireEvent.click(flowToggle)
+    expect(await screen.findByText('Encoding Legend:')).toBeTruthy()
+  })
+
+  it('updates stream status when WebSocket disconnects', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    await screen.findByText(/Live \(streaming\)/)
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+    expect(ws).toBeDefined()
+
+    ws.close()
+    expect(await screen.findByText('Reconnecting…')).toBeTruthy()
+  })
+
+  it('preserves reduced motion styles for live flow elements', () => {
+    const proc = (globalThis as unknown as { process?: { getBuiltinModule?: (m: string) => { readFileSync: (p: string, enc: string) => string } } }).process
+    const fs = proc?.getBuiltinModule?.('fs')
+    const css = fs?.readFileSync('src/index.css', 'utf-8') ?? ''
+    expect(css).toContain('.flow-node')
+    expect(css).toContain('.flow-pulse-inbound')
+    expect(css).toContain('@media (prefers-reduced-motion: reduce)')
   })
 })

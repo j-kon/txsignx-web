@@ -144,4 +144,66 @@ describe('API boundary', () => {
   it('rejects credential/query/fragment API URLs', () => {
     for (const url of ['https://user:secret@example.com','https://example.com?secret=1','https://example.com/#x','javascript:alert(1)']) expect(()=>new ApiClient(url)).toThrow('API URL')
   })
+
+  it('fetches live snapshot, recent blocks, and mempool summary correctly', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    const snapshotData = {
+      network: 'regtest',
+      tip_height: 101,
+      tip_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      recent_blocks: [
+        {
+          height: 101,
+          hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+          tx_count: 5,
+          size: 1500,
+          weight: 4200,
+          timestamp: 1700000000
+        }
+      ],
+      mempool_tx_count: 2,
+      mempool_size_bytes: 800,
+      latest_transactions: [
+        {
+          txid: '0101010101010101010101010101010101010101010101010101010101010101',
+          vsize: 140,
+          weight: 560,
+          fee_sats: 1000,
+          fee_rate: 7.14,
+          input_count: 1,
+          output_count: 2,
+          explicit_rbf: true,
+          has_witness: true
+        }
+      ]
+    }
+    reply(snapshotData)
+    const snapshot = await api.liveSnapshot()
+    expect(snapshot.network).toBe('regtest')
+    expect(snapshot.tip_height).toBe(101)
+    expect(snapshot.recent_blocks.length).toBe(1)
+    expect(snapshot.latest_transactions.length).toBe(1)
+
+    reply(snapshotData.recent_blocks)
+    const blocks = await api.recentBlocks()
+    expect(blocks.length).toBe(1)
+    expect(blocks[0].height).toBe(101)
+
+    const mempoolData = {
+      tx_count: 2,
+      size_bytes: 800,
+      total_fee_sats: 5000
+    }
+    reply(mempoolData)
+    const mempool = await api.mempoolSummary()
+    expect(mempool.tx_count).toBe(2)
+  })
+
+  it('generates correct liveStreamUrl with ws and wss schemes', () => {
+    const httpApi = new ApiClient('http://127.0.0.1:8080')
+    expect(httpApi.liveStreamUrl()).toBe('ws://127.0.0.1:8080/api/v1/live/stream')
+
+    const httpsApi = new ApiClient('https://api.txsignx.com')
+    expect(httpsApi.liveStreamUrl()).toBe('wss://api.txsignx.com/api/v1/live/stream')
+  })
 })

@@ -29,11 +29,17 @@ export function Header({page}:HeaderProps){
           TxSign<span className="logo-accent">X</span>
         </a>
         <nav aria-label="Main navigation">
-          <a href="#inspector" aria-current={page==='#inspector'?'page':undefined}>
+          <a
+            href="#live"
+            aria-current={page === '' || page === '#live' || page === '#home' ? 'page' : undefined}
+          >
+            Live Chain
+          </a>
+          <a href="#inspector" aria-current={page === '#inspector' ? 'page' : undefined}>
             Inspector
           </a>
-          <a href="#policies" aria-current={page==='#policies'?'page':undefined}>
-            Policy rules
+          <a href="#policies" aria-current={page === '#policies' ? 'page' : undefined}>
+            Policies
           </a>
           <a href="https://github.com/j-kon/txsignx" target="_blank" rel="noreferrer">
             GitHub

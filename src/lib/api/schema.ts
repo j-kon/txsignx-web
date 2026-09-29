@@ -10,7 +10,7 @@ const uint: Schema<number> = v => integer(v) >= 0 ? v as number : fail()
 const enumeration = <const T extends readonly string[]>(...values: T): Schema<T[number]> => v => typeof v === 'string' && values.includes(v) ? v : fail()
 const nullable = <T>(s: Schema<T>): Schema<T | null> => v => v === null ? null : s(v)
 const optional = <T>(s: Schema<T>): Schema<T | undefined> => v => (v === undefined || v === null) ? undefined : s(v)
-const array = <T>(s: Schema<T>): Schema<T[]> => v => Array.isArray(v) ? v.map(s) : fail()
+export const array = <T>(s: Schema<T>): Schema<T[]> => v => Array.isArray(v) ? v.map(s) : fail()
 const object = <T extends Record<string, Schema<unknown>>>(shape: T): Schema<{[K in keyof T]: Infer<T[K]>}> => v => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return fail()
   const record = v as Record<string, unknown>
@@ -67,7 +67,50 @@ const node = object({configured_network:str,node_network:str,tip:object({height:
 export const preflightSchema = object({inspection:psbtSchema,wallet_context:optional(wallet),node_context:optional(node),policy:object({decision:enumeration('pass','review','block'),risk_level:enumeration('low','medium','high','critical'),highest_severity:nullable(severity),finding_count:uint,findings:array(object({code,severity,title:str,message:str,recommendation:nullable(str),location})),evaluated_rules:array(code),rule_evaluations:array(object({code,status:enumeration('evaluated','partially_evaluated','not_evaluated'),reason:nullable(enumeration('no_wallet_context','no_node_context','no_expected_change_output','no_usable_input_context','some_input_context_unavailable'))})),config:object({max_absolute_fee_sats:uint,max_fee_ratio_bps:uint}),scope_note:str})})
 const ruleFields = {code,title:str,description:str,active:bool,required_context:array(str)}
 export const catalogSchema = object({active_rules:array(object({...ruleFields,default_severity:severity})),deferred_rules:array(object(ruleFields))})
-export const capabilitiesSchema = object({raw_transaction_inspection:bool,transaction_explorer:optional(bool),txid_inspection:optional(bool),transaction_address_rendering:optional(bool),psbt_v0_inspection:bool,wallet_context:bool,node_context_available:bool,policy_preflight:bool,broadcast_via_api:bool,signing:bool,finalization:bool,psbt_v2:bool,active_rules:uint,deferred_rules:uint})
+export const capabilitiesSchema = object({raw_transaction_inspection:bool,transaction_explorer:optional(bool),txid_inspection:optional(bool),transaction_address_rendering:optional(bool),psbt_v0_inspection:bool,wallet_context:bool,node_context_available:bool,live_chain:optional(bool),live_stream:optional(bool),policy_preflight:bool,broadcast_via_api:bool,signing:bool,finalization:bool,psbt_v2:bool,active_rules:uint,deferred_rules:uint})
+
+export const recentBlockSchema = object({
+  height: uint,
+  hash: str,
+  tx_count: uint,
+  weight: optional(uint),
+  size: optional(uint),
+  timestamp: optional(uint),
+})
+export const mempoolSummarySchema = object({
+  tx_count: uint,
+  size_bytes: optional(uint),
+  usage_bytes: optional(uint),
+  total_fee_sats: optional(uint),
+})
+export const liveTransactionSchema = object({
+  txid: str,
+  wtxid: optional(str),
+  vsize: uint,
+  weight: uint,
+  fee_sats: optional(uint),
+  fee_rate: optional(float),
+  input_count: uint,
+  output_count: uint,
+  explicit_rbf: bool,
+  has_witness: bool,
+  first_seen_at: optional(uint),
+  depends: optional(array(str)),
+})
+export const liveSnapshotSchema = object({
+  network: str,
+  tip_height: uint,
+  tip_hash: str,
+  recent_blocks: array(recentBlockSchema),
+  mempool_tx_count: uint,
+  mempool_size_bytes: optional(uint),
+  latest_transactions: array(liveTransactionSchema),
+})
+
+export type RecentBlock = Infer<typeof recentBlockSchema>
+export type MempoolSummary = Infer<typeof mempoolSummarySchema>
+export type LiveTransaction = Infer<typeof liveTransactionSchema>
+export type LiveSnapshot = Infer<typeof liveSnapshotSchema>
 export type TransactionReport = Infer<typeof transactionSchema>
 export type PsbtReport = Infer<typeof psbtSchema>
 export type PreflightReport = Infer<typeof preflightSchema>

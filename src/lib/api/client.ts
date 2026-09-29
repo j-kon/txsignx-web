@@ -1,4 +1,4 @@
-import { capabilitiesSchema, catalogSchema, malformed, preflightSchema, psbtSchema, transactionSchema } from './schema'
+import { array, capabilitiesSchema, catalogSchema, liveSnapshotSchema, malformed, mempoolSummarySchema, preflightSchema, psbtSchema, recentBlockSchema, transactionSchema } from './schema'
 import type { Schema } from './schema'
 export const MAX_TEXT_BYTES = 1024 * 1024
 export const MAX_BODY_BYTES = 2 * MAX_TEXT_BYTES
@@ -87,4 +87,13 @@ export class ApiClient {
   }
   async inspectPsbt(psbt:string) {validateText(psbt);return this.request('psbt/inspect',psbtSchema,{psbt})}
   async preflight(request:PreflightRequest) {validateText(request.psbt);return this.request('psbt/preflight',preflightSchema,request)}
+  async liveSnapshot() {return this.request('live/snapshot',liveSnapshotSchema)}
+  async recentBlocks() {return this.request('blocks/recent',array(recentBlockSchema))}
+  async mempoolSummary() {return this.request('mempool/summary',mempoolSummarySchema)}
+  liveStreamUrl(): string {
+    const wsUrl = new URL(this.baseUrl)
+    wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    wsUrl.pathname = '/api/v1/live/stream'
+    return wsUrl.href
+  }
 }

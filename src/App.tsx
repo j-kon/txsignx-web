@@ -3,6 +3,7 @@ import {ApiClient} from './lib/api/client'
 import {Header} from './components/Header'
 import {Home} from './pages/Home'
 import {Inspector} from './features/Inspector'
+import {LiveChain} from './features/LiveChain'
 import {Policies} from './features/Policies'
 
 function App(){
@@ -37,8 +38,15 @@ function App(){
           <Inspector api={connection.api!}/>
         ):page==='#policies'?(
           <Policies api={connection.api!}/>
-        ):(
+        ):page==='#about'?(
           <Home/>
+        ):(
+          <LiveChain
+            api={connection.api!}
+            onNavigateInspector={() => {
+              window.location.hash = '#inspector'
+            }}
+          />
         )}
       </main>
       <footer className="site-footer">

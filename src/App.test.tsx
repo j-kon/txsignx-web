@@ -428,4 +428,141 @@ describe('product flows',()=>{
     resolveRequest(null)
     expect(await screen.findByRole('heading',{name:'Transaction Explorer'})).toBeTruthy()
   })
+
+  it('visibly renders all capstone Transaction Explorer MVP fields in raw demo mode without network',async()=>{
+    txReport=raw
+    await openInspector()
+    fireEvent.click(screen.getByRole('tab',{name:/Raw Transaction/}))
+
+    // Use "Load Demo Transaction" button to load SegWit fixture
+    const loadDemoBtn = screen.getByRole('button',{name:'Load Demo Transaction'})
+    expect(loadDemoBtn).toBeTruthy()
+    fireEvent.click(loadDemoBtn)
+
+    // Verify textarea populated with SegWit raw hex
+    const textarea = screen.getByLabelText('Raw transaction hex') as HTMLTextAreaElement
+    expect(textarea.value).toMatch(/^020000000001/)
+
+    // Inspect
+    fireEvent.click(screen.getByRole('button',{name:'Inspect Transaction'}))
+
+    // 1. Transaction Overview heading
+    expect(await screen.findByRole('heading',{name:'Transaction Overview'})).toBeTruthy()
+
+    // 2. wTXID prominently visible
+    expect(screen.getAllByText('561d35cd60944685cbc9155bb5ea54de63aa4ec39c4ac3f2aa936f127cbeccd1').length).toBeGreaterThan(0)
+
+    // 3. SegWit yes/no badge & stat
+    expect(screen.getAllByText('SegWit: Yes').length).toBeGreaterThan(0)
+
+    // 4. Explicit RBF yes/no
+    expect(screen.getAllByText('Explicit RBF: Yes').length).toBeGreaterThan(0)
+
+    // 5. Separate Size, Weight, and Virtual Size
+    expect(screen.getAllByText('129 bytes').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('483 WU').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('121 vB').length).toBeGreaterThan(0)
+
+    // 6. Decoded structural fields: version, locktime, inputs, outputs
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('42').length).toBeGreaterThan(0)
+
+    // 7. Previous outpoint & sequence
+    expect(screen.getAllByText('1111111111111111111111111111111111111111111111111111111111111111:1').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('4294967293').length).toBeGreaterThan(0)
+
+    // 8. Witness Stack content: index, byte size, hex
+    expect(screen.getByText('Witness Stack')).toBeTruthy()
+    expect(screen.getByText('Witness #0')).toBeTruthy()
+    expect(screen.getAllByText('3 bytes').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('010203').length).toBeGreaterThan(0)
+    expect(screen.getByText('Witness #1')).toBeTruthy()
+    expect(screen.getAllByText('0 bytes').length).toBeGreaterThan(0)
+    expect(screen.getByText('<empty item (0 bytes)>')).toBeTruthy()
+    expect(screen.getByText('Witness #2')).toBeTruthy()
+    expect(screen.getAllByText('2 bytes').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('abcd').length).toBeGreaterThan(0)
+
+    // 9. Output values and script classifications
+    expect(screen.getAllByText('100,000 sats').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('50,000 sats').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('p2pkh').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('p2wpkh').length).toBeGreaterThan(0)
+
+    // 10. Explicit notices: unavailable raw fee & unencoded network
+    expect(screen.getByText('Fee unavailable without resolved previous outputs.')).toBeTruthy()
+    expect(screen.getAllByText('Raw transaction data does not encode Bitcoin network.').length).toBeGreaterThan(0)
+  })
+
+  it('visibly renders script disassembly, derived addresses, and opcode details with network selected',async()=>{
+    txReport=rawWithAddresses
+    await openInspector()
+    fireEvent.click(screen.getByRole('tab',{name:/Raw Transaction/}))
+
+    // Select bitcoin network
+    fireEvent.change(screen.getByLabelText(/Network for address derivation/),{target:{value:'bitcoin'}})
+    fireEvent.change(screen.getByLabelText('Raw transaction hex'),{target:{value:'0200000001...'}})
+    fireEvent.click(screen.getByRole('button',{name:'Inspect Transaction'}))
+
+    // Header verification
+    expect(await screen.findByRole('heading',{name:'Transaction Explorer'})).toBeTruthy()
+
+    // Verify ScriptSig disassembly
+    expect(screen.getAllByText('OP_PUSHBYTES_1 51').length).toBeGreaterThan(0)
+
+    // Verify ScriptPubKey disassembly
+    expect(screen.getAllByText('OP_DUP OP_HASH160 OP_PUSHBYTES_20 2222222222222222222222222222222222222222 OP_EQUALVERIFY OP_CHECKSIG').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('OP_0 OP_PUSHBYTES_20 3333333333333333333333333333333333333333').length).toBeGreaterThan(0)
+
+    // Verify Script Disassembly badges
+    expect(screen.getAllByText('Script Disassembly').length).toBeGreaterThan(0)
+
+    // Verify derived addresses rendered in output table
+    expect(screen.getAllByText('14975Ypk5124x22222222222222227d88M').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('bc1qwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwh7823e').length).toBeGreaterThan(0)
+  })
+
+  it('visibly renders confirmed chain context with block hash, confirmations, fee, and fee rate',async()=>{
+    currentCaps={...caps,node_context_available:true}
+    txReport=txidConfirmed
+    await openInspector()
+    fireEvent.click(screen.getByRole('tab',{name:/Transaction ID/}))
+
+    fireEvent.change(screen.getByLabelText('Transaction ID'),{target:{value:'7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101'}})
+    fireEvent.click(screen.getByRole('button',{name:'Lookup Transaction'}))
+
+    // Chain context status
+    expect(await screen.findByText('Confirmed (6 confirmations)')).toBeTruthy()
+    expect(screen.getAllByText('6').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b').length).toBeGreaterThan(0)
+
+    // Fee and fee rate
+    expect(screen.getAllByText('20,000 sats').length).toBeGreaterThan(0)
+    expect(screen.getByText('180.18 sat/vB')).toBeTruthy()
+    expect(screen.getAllByText('100,000 sats').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('80,000 sats').length).toBeGreaterThan(0)
+
+    // Resolved prevout
+    expect(screen.getByText('Resolved Spent Prevout')).toBeTruthy()
+    expect(screen.getAllByText('bcrt1qpd3xxxxpqqz7t3xxxxpqqz7t3xxxxpqqe72u7x').length).toBeGreaterThan(0)
+  })
+
+  it('visibly renders mempool status without inventing a block hash and retains fee metrics',async()=>{
+    currentCaps={...caps,node_context_available:true}
+    txReport=txidMempool
+    await openInspector()
+    fireEvent.click(screen.getByRole('tab',{name:/Transaction ID/}))
+
+    fireEvent.change(screen.getByLabelText('Transaction ID'),{target:{value:'8c0664cc2930678c6808cf093fd58105c9f32894bf52199fd4ed82d1911e2212'}})
+    fireEvent.click(screen.getByRole('button',{name:'Lookup Transaction'}))
+
+    // Mempool status
+    expect(await screen.findByText('In Mempool (0 confirmations)')).toBeTruthy()
+    expect(screen.getByText('Unconfirmed (mempool)')).toBeTruthy()
+    expect(screen.getAllByText('0').length).toBeGreaterThan(0)
+
+    // Fee and fee rate still available in mempool
+    expect(screen.getAllByText('5,000 sats').length).toBeGreaterThan(0)
+    expect(screen.getByText('45.05 sat/vB')).toBeTruthy()
+  })
 })

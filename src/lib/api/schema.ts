@@ -90,27 +90,77 @@ export const liveTransactionSchema = object({
   weight: uint,
   fee_sats: optional(uint),
   fee_rate: optional(float),
-  input_count: uint,
-  output_count: uint,
-  explicit_rbf: bool,
-  has_witness: bool,
+  input_count: optional(uint),
+  output_count: optional(uint),
+  explicit_rbf: optional(bool),
+  mempool_replaceable: optional(bool),
+  has_witness: optional(bool),
   first_seen_at: optional(uint),
   depends: optional(array(str)),
 })
+
 export const liveSnapshotSchema = object({
   network: str,
   tip_height: uint,
   tip_hash: str,
-  recent_blocks: array(recentBlockSchema),
-  mempool_tx_count: uint,
+  recent_blocks: optional(array(recentBlockSchema)),
+  mempool: optional(mempoolSummarySchema),
+  mempool_tx_count: optional(uint),
   mempool_size_bytes: optional(uint),
-  latest_transactions: array(liveTransactionSchema),
+  latest_transactions: optional(array(liveTransactionSchema)),
 })
+
+export const liveEventTransactionRemovedSchema = object({
+  txid: str,
+})
+
+export const liveEventTransactionConfirmedSchema = object({
+  txid: str,
+  block_hash: str,
+  block_height: uint,
+})
+
+export const liveEventSchema = {
+  parse(raw: unknown): LiveEvent | null {
+    if (!raw || typeof raw !== 'object') return null
+    const obj = raw as Record<string, unknown>
+    const type = obj.type
+    if (typeof type !== 'string') return null
+
+    try {
+      switch (type) {
+        case 'snapshot':
+          return { type: 'snapshot', data: liveSnapshotSchema(obj.data) }
+        case 'transaction_added':
+          return { type: 'transaction_added', data: liveTransactionSchema(obj.data) }
+        case 'transaction_removed':
+          return { type: 'transaction_removed', data: liveEventTransactionRemovedSchema(obj.data) }
+        case 'transaction_confirmed':
+          return { type: 'transaction_confirmed', data: liveEventTransactionConfirmedSchema(obj.data) }
+        case 'block_connected':
+          return { type: 'block_connected', data: recentBlockSchema(obj.data) }
+        case 'mempool_updated':
+          return { type: 'mempool_updated', data: mempoolSummarySchema(obj.data) }
+        default:
+          return null
+      }
+    } catch {
+      return null
+    }
+  },
+}
 
 export type RecentBlock = Infer<typeof recentBlockSchema>
 export type MempoolSummary = Infer<typeof mempoolSummarySchema>
 export type LiveTransaction = Infer<typeof liveTransactionSchema>
 export type LiveSnapshot = Infer<typeof liveSnapshotSchema>
+export type LiveEvent =
+  | { type: 'snapshot'; data: LiveSnapshot }
+  | { type: 'transaction_added'; data: LiveTransaction }
+  | { type: 'transaction_removed'; data: Infer<typeof liveEventTransactionRemovedSchema> }
+  | { type: 'transaction_confirmed'; data: Infer<typeof liveEventTransactionConfirmedSchema> }
+  | { type: 'block_connected'; data: RecentBlock }
+  | { type: 'mempool_updated'; data: MempoolSummary }
 export type TransactionReport = Infer<typeof transactionSchema>
 export type PsbtReport = Infer<typeof psbtSchema>
 export type PreflightReport = Infer<typeof preflightSchema>

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { ApiClient } from '../lib/api/client'
-import type { LiveSnapshot, LiveTransaction, RecentBlock, Report } from '../lib/api/schema'
+import {
+  type LiveEvent,
+  type LiveSnapshot,
+  type LiveTransaction,
+  type RecentBlock,
+  type Report,
+  liveEventSchema,
+} from '../lib/api/schema'
 import { ReportView } from './ReportView'
 
 interface LiveChainProps {
@@ -42,50 +49,50 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | undefined>(undefined)
 
-  // Handle live incoming events
-  const handleEvent = (event: { type: string; data?: unknown }) => {
-    if (!event || typeof event !== 'object' || !activeRef.current) return
+  // Handle validated live incoming events
+  const handleEvent = (event: LiveEvent) => {
+    if (!activeRef.current) return
 
     switch (event.type) {
       case 'snapshot': {
-        const snap = event.data as LiveSnapshot
+        const snap = event.data
         if (snap) {
           setSnapshot(snap)
-          if (Array.isArray(snap.recent_blocks)) setBlocks(snap.recent_blocks)
-          if (Array.isArray(snap.latest_transactions)) setTransactions(snap.latest_transactions)
+          if (snap.recent_blocks !== undefined && snap.recent_blocks !== null) {
+            setBlocks(snap.recent_blocks)
+          }
+          if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
+            setTransactions(snap.latest_transactions)
+          }
         }
         break
       }
       case 'transaction_added': {
-        const tx = event.data as LiveTransaction
+        const tx = event.data
         if (tx && tx.txid) {
           setTransactions(prev => {
             if (prev.some(t => t.txid === tx.txid)) return prev
             return [tx, ...prev].slice(0, 200)
           })
-          setSnapshot(prev => (prev ? { ...prev, mempool_tx_count: prev.mempool_tx_count + 1 } : null))
         }
         break
       }
       case 'transaction_removed': {
-        const payload = event.data as { txid: string }
+        const payload = event.data
         if (payload?.txid) {
           setTransactions(prev => prev.filter(t => t.txid !== payload.txid))
-          setSnapshot(prev =>
-            prev ? { ...prev, mempool_tx_count: Math.max(0, prev.mempool_tx_count - 1) } : null
-          )
         }
         break
       }
       case 'transaction_confirmed': {
-        const payload = event.data as { txid: string }
+        const payload = event.data
         if (payload?.txid) {
           setTransactions(prev => prev.filter(t => t.txid !== payload.txid))
         }
         break
       }
       case 'block_connected': {
-        const block = event.data as RecentBlock
+        const block = event.data
         if (block && block.height !== undefined) {
           setBlocks(prev => {
             if (prev.some(b => b.height === block.height)) return prev
@@ -93,6 +100,22 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           })
           setSnapshot(prev =>
             prev ? { ...prev, tip_height: block.height, tip_hash: block.hash } : null
+          )
+        }
+        break
+      }
+      case 'mempool_updated': {
+        const mempool = event.data
+        if (mempool) {
+          setSnapshot(prev =>
+            prev
+              ? {
+                  ...prev,
+                  mempool,
+                  mempool_tx_count: mempool.tx_count,
+                  mempool_size_bytes: mempool.size_bytes,
+                }
+              : null
           )
         }
         break
@@ -109,8 +132,12 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         const snap = await api.liveSnapshot()
         if (!activeRef.current) return
         setSnapshot(snap)
-        setBlocks(snap.recent_blocks || [])
-        setTransactions(snap.latest_transactions || [])
+        if (snap.recent_blocks !== undefined && snap.recent_blocks !== null) {
+          setBlocks(snap.recent_blocks)
+        }
+        if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
+          setTransactions(snap.latest_transactions)
+        }
         setErrorMessage('')
       } catch (err: unknown) {
         if (!activeRef.current) return
@@ -137,9 +164,13 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           if (!activeRef.current) return
           try {
             const parsed = JSON.parse(e.data)
-            handleEvent(parsed)
+            // Strict runtime validation of WebSocket payload
+            const event = liveEventSchema.parse(parsed)
+            if (event) {
+              handleEvent(event)
+            }
           } catch {
-            // ignore non-json
+            // safely ignore non-json or malformed payloads without crashing
           }
         }
 
@@ -171,53 +202,79 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     }
   }, [api])
 
-  // Universal TXID search
+  // Handle universal TXID search
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault()
-    setSearchError('')
-    const clean = searchQuery.trim()
-    if (!clean) return
-
-    if (!/^[0-9a-fA-F]{64}$/.test(clean)) {
-      setSearchError('Enter a valid 64-character hexadecimal transaction ID.')
+    const trimmed = searchQuery.trim()
+    if (!trimmed) {
+      setSearchError('Please enter a 64-character transaction ID.')
       return
     }
-
-    await inspectTxid(clean)
+    if (!/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+      setSearchError('Invalid transaction ID: must be a 64-character hexadecimal string.')
+      return
+    }
+    setSearchError('')
+    inspectTxid(trimmed)
   }
 
-  // Full inspection using existing Transaction Explorer
+  // Inspect TXID in full Transaction Explorer
   const inspectTxid = async (txid: string) => {
     setReportLoading(true)
     setReportError('')
     try {
       const report = await api.inspectTxid(txid)
+      if (!activeRef.current) return
       setActiveReport(report)
       setSelectedTx(null)
     } catch (err: unknown) {
-      setReportError(err instanceof Error ? err.message : 'Could not inspect transaction.')
+      if (!activeRef.current) return
+      const msg = err instanceof Error ? err.message : 'Failed to inspect transaction via connected node.'
+      setReportError(msg)
     } finally {
       setReportLoading(false)
     }
   }
 
   // Graph calculation for Phase 11 (in-mempool parent/child relationships)
-  const graphLinks = useMemo(() => {
+  const { graphLinks, dagLayout, graphNodes } = useMemo(() => {
     const txMap = new Map<string, LiveTransaction>()
     for (const tx of transactions) {
       txMap.set(tx.txid, tx)
     }
     const links: Array<{ from: string; to: string }> = []
+    const involvedTxids = new Set<string>()
+
     for (const tx of transactions) {
       if (Array.isArray(tx.depends)) {
         for (const parentTxid of tx.depends) {
           if (txMap.has(parentTxid)) {
             links.push({ from: parentTxid, to: tx.txid })
+            involvedTxids.add(parentTxid)
+            involvedTxids.add(tx.txid)
           }
         }
       }
     }
-    return links
+
+    // Deterministic DAG layout coordinates
+    const layout = new Map<string, { x: number; y: number }>()
+    const parents = Array.from(new Set(links.map(l => l.from)))
+    const children = Array.from(new Set(links.map(l => l.to).filter(id => !parents.includes(id))))
+
+    // Col 1: Parents (X = 40)
+    parents.forEach((pid, idx) => {
+      layout.set(pid, { x: 40, y: 30 + idx * 90 })
+    })
+
+    // Col 2: Children (X = 360)
+    children.forEach((cid, idx) => {
+      layout.set(cid, { x: 360, y: 30 + idx * 90 })
+    })
+
+    const nodes = Array.from(involvedTxids).map(id => txMap.get(id)!).filter(Boolean)
+
+    return { graphLinks: links, dagLayout: layout, graphNodes: nodes }
   }, [transactions])
 
   // Close drawer on Escape
@@ -235,7 +292,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   if (activeReport) {
     return (
       <div className="live-chain-report-wrapper">
-        <div className="report-navigation-bar">
+        <div className="report-back-bar">
           <button
             type="button"
             className="button secondary back-to-live-btn"
@@ -298,7 +355,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             )}
           </div>
           <button type="submit" className="button primary search-submit-btn" disabled={reportLoading}>
-            {reportLoading ? 'Inspecting…' : 'Inspect TXID'}
+            Inspect TXID
           </button>
           {onNavigateInspector && (
             <button
@@ -310,16 +367,8 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             </button>
           )}
         </form>
-        {searchError && (
-          <div className="search-error-banner" role="alert">
-            {searchError}
-          </div>
-        )}
-        {reportError && (
-          <div className="search-error-banner" role="alert">
-            {reportError}
-          </div>
-        )}
+        {searchError && <p className="search-error-msg">{searchError}</p>}
+        {reportError && <p className="search-error-msg">{reportError}</p>}
       </section>
 
       {/* Chain Status Bar (Phase 7) */}
@@ -328,7 +377,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           <span className="metric-label">Network</span>
           <span className="metric-val network-pill">
             <span className="network-dot" aria-hidden="true" />
-            {snapshot?.network || 'regtest'}
+            {snapshot?.network || '—'}
           </span>
         </div>
         <div className="status-metric-card height-card">
@@ -340,12 +389,32 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         <div className="status-metric-card mempool-card">
           <span className="metric-label">Mempool Transactions</span>
           <span className="metric-val mono">
-            {snapshot ? snapshot.mempool_tx_count.toLocaleString() : '—'}
-            {snapshot?.mempool_size_bytes !== undefined && snapshot.mempool_size_bytes !== null && (
-              <span className="metric-subval">
-                {' '}
-                ({(snapshot.mempool_size_bytes / 1000).toFixed(1)} kB)
-              </span>
+            {snapshot ? (
+              snapshot.mempool !== undefined && snapshot.mempool !== null ? (
+                <>
+                  {snapshot.mempool.tx_count.toLocaleString()}
+                  {snapshot.mempool.size_bytes !== undefined && snapshot.mempool.size_bytes !== null && (
+                    <span className="metric-subval">
+                      {' '}
+                      ({(snapshot.mempool.size_bytes / 1000).toFixed(1)} kB)
+                    </span>
+                  )}
+                </>
+              ) : snapshot.mempool_tx_count !== undefined && snapshot.mempool_tx_count !== null ? (
+                <>
+                  {snapshot.mempool_tx_count.toLocaleString()}
+                  {snapshot.mempool_size_bytes !== undefined && snapshot.mempool_size_bytes !== null && (
+                    <span className="metric-subval">
+                      {' '}
+                      ({(snapshot.mempool_size_bytes / 1000).toFixed(1)} kB)
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="metric-unavailable">Unavailable</span>
+              )
+            ) : (
+              '—'
             )}
           </span>
         </div>
@@ -378,9 +447,9 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
 
       {/* Node Warning / Unavailable Banner */}
       {errorMessage && (
-        <section className="node-notice-banner" role="alert">
-          <div className="notice-icon" aria-hidden="true">⚠️</div>
-          <div className="notice-body">
+        <section className="node-warning-banner" role="alert">
+          <span className="notice-icon" aria-hidden="true">⚠️</span>
+          <div>
             <strong>Bitcoin Core Node Observation Notice:</strong> {errorMessage}
             <span className="notice-sub">
               Check that your Bitcoin Core daemon is running with RPC and configured on the TxSignX API.
@@ -397,7 +466,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           </h2>
           <span className="blocks-count-pill">{blocks.length} confirmed</span>
         </div>
-        {blocks.length === 0 ? (
+        {(snapshot?.recent_blocks === undefined || snapshot?.recent_blocks === null) && blocks.length === 0 ? (
+          <div className="empty-blocks-state">
+            <span className="muted">Recent block data unavailable from node.</span>
+          </div>
+        ) : blocks.length === 0 ? (
           <div className="empty-blocks-state">
             <span className="muted">No blocks observed yet. Waiting for chain updates…</span>
           </div>
@@ -448,31 +521,33 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             </span>
           </div>
 
-          {/* Mode Switcher: Flow vs Flow Graph (Phase 11) */}
-          <div className="flow-mode-toggle" role="radiogroup" aria-label="Live flow display mode">
-            <button
-              type="button"
-              className={`toggle-option ${viewMode === 'flow' ? 'active' : ''}`}
-              onClick={() => setViewMode('flow')}
-              role="radio"
-              aria-checked={viewMode === 'flow'}
-            >
+          {/* View mode toggle: Flow vs Graph (Phase 11) */}
+          <div className="view-mode-toggle" role="radiogroup" aria-label="View display mode">
+            <label className={`toggle-option ${viewMode === 'flow' ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="viewMode"
+                value="flow"
+                checked={viewMode === 'flow'}
+                onChange={() => setViewMode('flow')}
+              />
               Live Flow
-            </button>
-            <button
-              type="button"
-              className={`toggle-option ${viewMode === 'graph' ? 'active' : ''}`}
-              onClick={() => setViewMode('graph')}
-              role="radio"
-              aria-checked={viewMode === 'graph'}
-            >
+            </label>
+            <label className={`toggle-option ${viewMode === 'graph' ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="viewMode"
+                value="graph"
+                checked={viewMode === 'graph'}
+                onChange={() => setViewMode('graph')}
+              />
               Transaction Flow Graph {graphLinks.length > 0 && `(${graphLinks.length} links)`}
-            </button>
+            </label>
           </div>
         </div>
 
-        {/* Visual Legend (Phase 8) */}
-        <div className="flow-legend" aria-label="Visual properties legend">
+        {/* Visual Encoding Legend */}
+        <div className="flow-legend-bar" aria-label="Visual encoding legend">
           <span className="legend-label">Encoding Legend:</span>
           <span className="legend-item">
             <span className="legend-swatch size-swatch" aria-hidden="true" />
@@ -493,7 +568,14 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         </div>
 
         {/* Flow Visual Area */}
-        {transactions.length === 0 ? (
+        {(snapshot?.latest_transactions === undefined || snapshot?.latest_transactions === null) && transactions.length === 0 ? (
+          <div className="empty-flow-panel">
+            <h3>Mempool transaction data unavailable</h3>
+            <p className="muted">
+              Could not retrieve mempool transactions from the connected node.
+            </p>
+          </div>
+        ) : transactions.length === 0 ? (
           <div className="empty-flow-panel">
             <div className="empty-flow-icon" aria-hidden="true">
               <svg viewBox="0 0 48 48" width="48" height="48" fill="none">
@@ -509,10 +591,9 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         ) : viewMode === 'flow' ? (
           <div className="flow-nodes-grid" role="region" aria-label="Live mempool transactions">
             {transactions.map((tx) => {
-              // Node visual encoding
               const isLarge = tx.vsize > 300
-              const isRbf = tx.explicit_rbf
-              const hasWitness = tx.has_witness
+              const isRbf = tx.explicit_rbf === true
+              const hasWitness = tx.has_witness === true
               const isSelected = selectedTx?.txid === tx.txid
 
               return (
@@ -572,8 +653,14 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 </div>
               </div>
             ) : (
-              <div className="graph-dag-canvas">
-                <svg className="graph-svg" width="100%" height="320">
+              <div className="graph-dag-canvas" style={{ position: 'relative', minHeight: '320px' }}>
+                {/* SVG connection lines matching exact node coordinates */}
+                <svg
+                  className="graph-svg"
+                  width="100%"
+                  height={Math.max(320, (graphNodes.length + 1) * 90)}
+                  style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
+                >
                   <defs>
                     <marker
                       id="arrowhead"
@@ -587,13 +674,16 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     </marker>
                   </defs>
                   {graphLinks.map((link, idx) => {
-                    const startX = 60 + (idx % 6) * 160
-                    const startY = 60 + Math.floor(idx / 6) * 120
-                    const endX = startX + 110
-                    const endY = startY + 40
+                    const parentPos = dagLayout.get(link.from) || { x: 40, y: 30 + idx * 90 }
+                    const childPos = dagLayout.get(link.to) || { x: 360, y: 30 + idx * 90 }
+                    const startX = parentPos.x + 200
+                    const startY = parentPos.y + 34
+                    const endX = childPos.x
+                    const endY = childPos.y + 34
                     return (
                       <line
                         key={`${link.from}-${link.to}-${idx}`}
+                        className="graph-link-line"
                         x1={startX}
                         y1={startY}
                         x2={endX}
@@ -606,22 +696,41 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     )
                   })}
                 </svg>
-                <div className="graph-dag-nodes">
-                  {transactions.slice(0, 30).map((tx) => (
-                    <button
-                      type="button"
-                      key={tx.txid}
-                      className={`graph-node-card ${selectedTx?.txid === tx.txid ? 'selected' : ''}`}
-                      onClick={() => setSelectedTx(tx)}
-                    >
-                      <div className="node-card-id">
-                        <code>{truncateHash(tx.txid, 6, 4)}</code>
-                      </div>
-                      <div className="node-card-sub">
-                        <span>{tx.vsize} vB</span>
-                        <span>{tx.fee_rate !== undefined && tx.fee_rate !== null ? `${tx.fee_rate.toFixed(1)} s/vB` : '—'}</span>
-                      </div>
-                    </button>
+
+                {/* Deterministic positioned node cards */}
+                <div className="graph-dag-nodes" style={{ position: 'relative', minHeight: '320px' }}>
+                  {graphNodes.map((tx) => {
+                    const pos = dagLayout.get(tx.txid) || { x: 40, y: 30 }
+                    return (
+                      <button
+                        type="button"
+                        key={tx.txid}
+                        className={`graph-node-card ${selectedTx?.txid === tx.txid ? 'selected' : ''}`}
+                        style={{ position: 'absolute', left: `${pos.x}px`, top: `${pos.y}px`, width: '200px' }}
+                        onClick={() => setSelectedTx(tx)}
+                      >
+                        <div className="node-card-id">
+                          <code>{truncateHash(tx.txid, 6, 4)}</code>
+                        </div>
+                        <div className="node-card-sub">
+                          <span>{tx.vsize} vB</span>
+                          <span>{tx.fee_rate !== undefined && tx.fee_rate !== null ? `${tx.fee_rate.toFixed(1)} s/vB` : '—'}</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Explicit Parent -> Child Relationship Summary List */}
+                <div className="graph-relationship-list" style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #243041' }}>
+                  <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#94a3b8' }}>Observed In-Mempool Dependencies</h4>
+                  {graphLinks.map((link, idx) => (
+                    <div key={`${link.from}->${link.to}-${idx}`} className="dag-edge-row" style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px', fontSize: '13px' }}>
+                      <span className="mono" style={{ color: '#60a5fa' }}>Parent {truncateHash(link.from, 6, 4)}</span>
+                      <span style={{ color: '#f7931a' }}>→</span>
+                      <span className="mono" style={{ color: '#34d399' }}>Child {truncateHash(link.to, 6, 4)}</span>
+                      <span style={{ color: '#64748b', fontSize: '11px' }}>(Spends unconfirmed parent output)</span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -634,18 +743,15 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       {selectedTx && (
         <div className="drawer-overlay" onClick={() => setSelectedTx(null)}>
           <aside
-            className="transaction-preview-drawer"
+            className="drawer-panel"
             role="dialog"
             aria-label="Transaction Preview"
-            aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="drawer-header">
               <div className="drawer-title-group">
-                <span className="drawer-pretitle">Transaction Preview</span>
-                <h3 className="drawer-title">
-                  <code>{truncateHash(selectedTx.txid, 8, 8)}</code>
-                </h3>
+                <span className="drawer-badge">Live Mempool Entry</span>
+                <h3 className="drawer-title">Transaction Preview</h3>
               </div>
               <button
                 type="button"
@@ -658,23 +764,23 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             </div>
 
             <div className="drawer-content">
-              {/* Full TXID Card */}
+              {/* TXID Display */}
               <div className="drawer-txid-card">
-                <span className="sublabel">Full Transaction ID</span>
+                <span className="sublabel">Transaction ID (TXID)</span>
                 <code className="mono txid-full-code">{selectedTx.txid}</code>
               </div>
 
               {/* Status */}
-              <div className="drawer-metric-row">
-                <span className="drawer-field-label">Confirmation Status</span>
+              <div className="drawer-stat-item status-item">
+                <span className="stat-label">Confirmation Status</span>
                 <span className="status-pill pill-mempool">In Mempool (0 confirmations)</span>
               </div>
 
-              {/* Metrics Grid */}
+              {/* Numerical facts */}
               <div className="drawer-stats-grid">
                 <div className="drawer-stat-item">
                   <span className="stat-label">Virtual Size</span>
-                  <span className="stat-val mono">{selectedTx.vsize.toLocaleString()} vB</span>
+                  <span className="stat-val mono">{selectedTx.vsize} vB</span>
                 </div>
                 <div className="drawer-stat-item">
                   <span className="stat-label">Weight</span>
@@ -698,11 +804,19 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 </div>
                 <div className="drawer-stat-item">
                   <span className="stat-label">Inputs</span>
-                  <span className="stat-val mono">{selectedTx.input_count}</span>
+                  <span className="stat-val mono">
+                    {selectedTx.input_count !== undefined && selectedTx.input_count !== null
+                      ? selectedTx.input_count
+                      : 'Unavailable'}
+                  </span>
                 </div>
                 <div className="drawer-stat-item">
                   <span className="stat-label">Outputs</span>
-                  <span className="stat-val mono">{selectedTx.output_count}</span>
+                  <span className="stat-val mono">
+                    {selectedTx.output_count !== undefined && selectedTx.output_count !== null
+                      ? selectedTx.output_count
+                      : 'Unavailable'}
+                  </span>
                 </div>
               </div>
 
@@ -710,20 +824,53 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               <div className="drawer-badges-row">
                 <div className="drawer-badge-group">
                   <span className="sublabel">SegWit Witness Data</span>
-                  <span className={`status-pill ${selectedTx.has_witness ? 'pill-segwit' : 'pill-neutral'}`}>
-                    {selectedTx.has_witness ? 'Yes (Witness Present)' : 'No'}
+                  <span
+                    className={`status-pill ${
+                      selectedTx.has_witness === true
+                        ? 'pill-segwit'
+                        : selectedTx.has_witness === false
+                        ? 'pill-neutral'
+                        : 'pill-unavailable'
+                    }`}
+                  >
+                    {selectedTx.has_witness === true
+                      ? 'Yes (Witness Present)'
+                      : selectedTx.has_witness === false
+                      ? 'No'
+                      : 'Unavailable'}
                   </span>
                 </div>
                 <div className="drawer-badge-group">
-                  <span className="sublabel">BIP 125 Replace-By-Fee</span>
-                  <span className={`status-pill ${selectedTx.explicit_rbf ? 'pill-rbf' : 'pill-neutral'}`}>
-                    {selectedTx.explicit_rbf ? 'Explicit RBF Enabled' : 'No'}
+                  <span className="sublabel">BIP 125 Explicit RBF</span>
+                  <span
+                    className={`status-pill ${
+                      selectedTx.explicit_rbf === true
+                        ? 'pill-rbf'
+                        : selectedTx.explicit_rbf === false
+                        ? 'pill-neutral'
+                        : 'pill-unavailable'
+                    }`}
+                  >
+                    {selectedTx.explicit_rbf === true
+                      ? 'Explicit RBF Enabled'
+                      : selectedTx.explicit_rbf === false
+                      ? 'No'
+                      : 'Unavailable'}
                   </span>
                 </div>
               </div>
 
+              {selectedTx.mempool_replaceable !== undefined && selectedTx.mempool_replaceable !== null && (
+                <div className="drawer-stat-item" style={{ marginTop: '12px' }}>
+                  <span className="sublabel">Mempool Replaceability (Node Policy)</span>
+                  <span className="stat-val mono" style={{ fontSize: '13px' }}>
+                    {selectedTx.mempool_replaceable ? 'Yes (Mempool Policy)' : 'No'}
+                  </span>
+                </div>
+              )}
+
               {selectedTx.wtxid && (
-                <div className="drawer-txid-card">
+                <div className="drawer-txid-card" style={{ marginTop: '12px' }}>
                   <span className="sublabel">Witness Transaction ID (wTXID)</span>
                   <code className="mono txid-full-code">{selectedTx.wtxid}</code>
                 </div>

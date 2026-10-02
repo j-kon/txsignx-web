@@ -902,4 +902,138 @@ describe('Live Chain Observability Interface', () => {
     expect(css).toContain('.flow-pulse-inbound')
     expect(css).toContain('@media (prefers-reduced-motion: reduce)')
   })
+
+  it('renders "—" and not "regtest" when network is absent or empty', async () => {
+    liveSnapshotData = {
+      ...defaultSnapshot,
+      network: '',
+    }
+    window.location.hash = ''
+    render(<App />)
+
+    const networkCard = await screen.findByLabelText('Bitcoin network status')
+    expect(networkCard.textContent).toContain('—')
+    expect(networkCard.textContent).not.toContain('regtest')
+  })
+
+  it('distinguishes unavailable mempool from 0 transactions', async () => {
+    liveSnapshotData = {
+      ...defaultSnapshot,
+      mempool: null,
+      mempool_tx_count: null,
+      mempool_size_bytes: null,
+      latest_transactions: null,
+    }
+    window.location.hash = ''
+    render(<App />)
+
+    expect(await screen.findByText('Unavailable')).toBeTruthy()
+    expect(await screen.findByText('Mempool transaction data unavailable')).toBeTruthy()
+    expect(screen.queryByText('Mempool is currently empty on this node')).toBeNull()
+  })
+
+  it('renders "Unavailable" for missing structural facts in preview drawer', async () => {
+    liveSnapshotData = {
+      ...defaultSnapshot,
+      latest_transactions: [
+        {
+          txid: '1111111111111111111111111111111111111111111111111111111111111111',
+          vsize: 200,
+          weight: 800,
+          fee_sats: 2000,
+          fee_rate: 10.0,
+          mempool_replaceable: true,
+        }
+      ]
+    }
+    window.location.hash = ''
+    render(<App />)
+
+    const txCard = await screen.findByText('11111…1111')
+    fireEvent.click(txCard)
+
+    expect(await screen.findByRole('heading', { name: 'Transaction Preview' })).toBeTruthy()
+    const unavailableStats = screen.getAllByText('Unavailable')
+    expect(unavailableStats.length).toBeGreaterThanOrEqual(3)
+    expect(screen.getByText('Mempool Replaceability (Node Policy)')).toBeTruthy()
+    expect(screen.getByText('Yes (Mempool Policy)')).toBeTruthy()
+  })
+
+  it('safely ignores malformed or unknown WebSocket messages without crashing', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    await screen.findByText('7b055…1101')
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+    expect(ws).toBeDefined()
+
+    ws.onmessage?.({ data: 'not valid json {{{' })
+    ws.emit({ type: 'future_unsupported_event', data: { foo: 'bar' } })
+    ws.emit({ type: 'transaction_added', data: { corrupt: true } })
+
+    expect(screen.getByText('7b055…1101')).toBeTruthy()
+  })
+
+  it('updates mempool statistics authoritatively on mempool_updated event', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    await screen.findByText('7b055…1101')
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+    expect(ws).toBeDefined()
+
+    ws.emit({
+      type: 'mempool_updated',
+      data: {
+        tx_count: 88,
+        size_bytes: 45000,
+        usage_bytes: 90000,
+        total_fee_sats: 150000,
+      }
+    })
+
+    expect(await screen.findByText(/88/)).toBeTruthy()
+    expect(screen.getByText(/\(45.0 kB\)/)).toBeTruthy()
+  })
+
+  it('removes transaction and tracks confirmation on transaction_confirmed event', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    await screen.findByText('7b055…1101')
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+    expect(ws).toBeDefined()
+
+    ws.emit({
+      type: 'transaction_confirmed',
+      data: {
+        txid: '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101',
+        block_hash: '000000000039d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce271',
+        block_height: 102,
+      }
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('7b055…1101')).toBeNull()
+    })
+    // Other mempool transaction remains
+    expect(screen.getByText('8c066…2212')).toBeTruthy()
+  })
+
+  it('maintains matching coordinates between DAG node cards and SVG paths in graph mode', async () => {
+    window.location.hash = ''
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const graphToggle = screen.getByRole('radio', { name: /Transaction Flow Graph/ })
+    fireEvent.click(graphToggle)
+
+    await screen.findByRole('region', { name: 'Transaction Flow Graph' })
+    const svgLine = document.querySelector('.graph-link-line')
+    expect(svgLine).not.toBeNull()
+    expect(svgLine?.getAttribute('x1')).toBe('240')
+    expect(svgLine?.getAttribute('y1')).toBe('64')
+    expect(svgLine?.getAttribute('x2')).toBe('360')
+    expect(svgLine?.getAttribute('y2')).toBe('64')
+  })
 })

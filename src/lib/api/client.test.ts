@@ -7,6 +7,7 @@ import policies from '../../test/fixtures/policies.json'
 import txidConfirmed from '../../test/fixtures/txid_confirmed.json'
 import txidMempool from '../../test/fixtures/txid_mempool.json'
 import rawWithAddresses from '../../test/fixtures/raw_with_addresses.json'
+import { liveEventSchema } from './schema'
 
 const reply = (data: unknown, status = 200) => vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(data), {status, headers: {'Content-Type': 'application/json'}}))))
 afterEach(() => vi.unstubAllGlobals())
@@ -181,8 +182,8 @@ describe('API boundary', () => {
     const snapshot = await api.liveSnapshot()
     expect(snapshot.network).toBe('regtest')
     expect(snapshot.tip_height).toBe(101)
-    expect(snapshot.recent_blocks.length).toBe(1)
-    expect(snapshot.latest_transactions.length).toBe(1)
+    expect(snapshot.recent_blocks?.length).toBe(1)
+    expect(snapshot.latest_transactions?.length).toBe(1)
 
     reply(snapshotData.recent_blocks)
     const blocks = await api.recentBlocks()
@@ -205,5 +206,109 @@ describe('API boundary', () => {
 
     const httpsApi = new ApiClient('https://api.txsignx.com')
     expect(httpsApi.liveStreamUrl()).toBe('wss://api.txsignx.com/api/v1/live/stream')
+  })
+
+  it('accepts live snapshot with null/undefined optional collections and missing structural facts', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    const minimalSnapshot = {
+      network: 'regtest',
+      tip_height: 105,
+      tip_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      recent_blocks: null,
+      mempool: null,
+      mempool_tx_count: null,
+      mempool_size_bytes: null,
+      latest_transactions: [
+        {
+          txid: '0101010101010101010101010101010101010101010101010101010101010101',
+          vsize: 140,
+          weight: 560,
+          // input_count, output_count, explicit_rbf, has_witness are omitted/null
+          mempool_replaceable: true,
+        }
+      ]
+    }
+    reply(minimalSnapshot)
+    const snapshot = await api.liveSnapshot()
+    expect(snapshot.network).toBe('regtest')
+    expect(snapshot.recent_blocks == null).toBe(true)
+    expect(snapshot.mempool == null).toBe(true)
+    expect(snapshot.latest_transactions?.[0].input_count == null).toBe(true)
+    expect(snapshot.latest_transactions?.[0].explicit_rbf == null).toBe(true)
+    expect(snapshot.latest_transactions?.[0].mempool_replaceable).toBe(true)
+  })
+
+  it('safely parses all valid LiveEvent types with liveEventSchema.parse', () => {
+    // 1. snapshot
+    const snapshotEvent = liveEventSchema.parse({
+      type: 'snapshot',
+      data: {
+        network: 'regtest',
+        tip_height: 101,
+        tip_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      }
+    })
+    expect(snapshotEvent?.type).toBe('snapshot')
+
+    // 2. transaction_added
+    const txAddedEvent = liveEventSchema.parse({
+      type: 'transaction_added',
+      data: {
+        txid: '0101010101010101010101010101010101010101010101010101010101010101',
+        vsize: 140,
+        weight: 560,
+      }
+    })
+    expect(txAddedEvent?.type).toBe('transaction_added')
+
+    // 3. transaction_removed
+    const txRemovedEvent = liveEventSchema.parse({
+      type: 'transaction_removed',
+      data: {
+        txid: '0101010101010101010101010101010101010101010101010101010101010101',
+      }
+    })
+    expect(txRemovedEvent?.type).toBe('transaction_removed')
+
+    // 4. transaction_confirmed
+    const txConfirmedEvent = liveEventSchema.parse({
+      type: 'transaction_confirmed',
+      data: {
+        txid: '0101010101010101010101010101010101010101010101010101010101010101',
+        block_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+        block_height: 102,
+      }
+    })
+    expect(txConfirmedEvent?.type).toBe('transaction_confirmed')
+
+    // 5. block_connected
+    const blockEvent = liveEventSchema.parse({
+      type: 'block_connected',
+      data: {
+        height: 102,
+        hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+        tx_count: 5,
+      }
+    })
+    expect(blockEvent?.type).toBe('block_connected')
+
+    // 6. mempool_updated
+    const mempoolEvent = liveEventSchema.parse({
+      type: 'mempool_updated',
+      data: {
+        tx_count: 10,
+        size_bytes: 4000,
+      }
+    })
+    expect(mempoolEvent?.type).toBe('mempool_updated')
+  })
+
+  it('safely rejects malformed or unknown events returning null without throwing', () => {
+    expect(liveEventSchema.parse(null)).toBeNull()
+    expect(liveEventSchema.parse('not an object')).toBeNull()
+    expect(liveEventSchema.parse({})).toBeNull()
+    expect(liveEventSchema.parse({ type: 'unknown_type', data: {} })).toBeNull()
+    expect(liveEventSchema.parse({ type: 'transaction_added', data: { missing_txid: 123 } })).toBeNull()
+    expect(liveEventSchema.parse({ type: 'block_connected', data: { height: -1 } })).toBeNull()
   })
 })

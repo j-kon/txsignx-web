@@ -117,6 +117,8 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
 
   // Track new txids for one-time arrival animation
   const [newTxids, setNewTxids] = useState<Set<string>>(new Set())
+  const [confirmedTxids, setConfirmedTxids] = useState<Set<string>>(new Set())
+  const [removedTxids, setRemovedTxids] = useState<Set<string>>(new Set())
 
   const activeRef = useRef(true)
   const wsRef = useRef<WebSocket | null>(null)
@@ -207,7 +209,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             if (prev.some((t) => t.txid === tx.txid)) return prev
             return [tx, ...prev].slice(0, FRONTEND_WORKING_SET_LIMIT)
           })
-          // Remove new pulse tag after 2.5s
+          // Remove arrival highlight tag after 600ms
           setTimeout(() => {
             if (activeRef.current) {
               setNewTxids((prev) => {
@@ -216,7 +218,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 return updated
               })
             }
-          }, 2500)
+          }, 600)
         }
         break
       }
@@ -235,14 +237,34 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       case 'transaction_removed': {
         const payload = event.data
         if (payload?.txid) {
-          setTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
+          setRemovedTxids((prev) => new Set(prev).add(payload.txid))
+          setTimeout(() => {
+            if (activeRef.current) {
+              setTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
+              setRemovedTxids((prev) => {
+                const next = new Set(prev)
+                next.delete(payload.txid)
+                return next
+              })
+            }
+          }, 400)
         }
         break
       }
       case 'transaction_confirmed': {
         const payload = event.data
         if (payload?.txid) {
-          setTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
+          setConfirmedTxids((prev) => new Set(prev).add(payload.txid))
+          setTimeout(() => {
+            if (activeRef.current) {
+              setTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
+              setConfirmedTxids((prev) => {
+                const next = new Set(prev)
+                next.delete(payload.txid)
+                return next
+              })
+            }
+          }, 400)
         }
         break
       }
@@ -1190,15 +1212,21 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 const layout = layoutMap.get(tx.txid) || {
                   leftPercent: 50,
                   topPercent: 50,
+                  visualOffsetX: 0,
+                  visualOffsetY: 0,
                   lane: 0,
                   sizePx: 48,
                   isOverflow: false,
                   densityTier: 'large' as const,
+                  bobDuration: 4.5,
+                  bobDelay: 0,
                 }
                 const isRbf = tx.explicit_rbf === true
                 const hasWitness = tx.has_witness === true
                 const isSelected = selectedTx?.txid === tx.txid
                 const isNew = newTxids.has(tx.txid)
+                const isConfirmed = confirmedTxids.has(tx.txid)
+                const isRemoved = removedTxids.has(tx.txid)
                 const isCompact = layout.densityTier === 'compact'
                 const isMedium = layout.densityTier === 'medium'
 
@@ -1206,6 +1234,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                   tx.vsize === undefined || tx.vsize === null || tx.hydration_status === 'pending'
                 const displayVsize =
                   tx.vsize !== undefined && tx.vsize !== null ? `${tx.vsize} vB` : 'vsize: Pending'
+
+                const observedTime = tx.observed_at ?? tx.first_seen_at ?? nowSeconds
+                const ageSeconds = Math.max(0, nowSeconds - observedTime)
+                const streamDuration = adaptiveWindow.windowSeconds
+                const streamDelay = -Math.min(streamDuration, ageSeconds)
 
                 return (
                   <button
@@ -1215,14 +1248,27 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     className={`stream-tx-node live-tx-node flow-node ${isRbf ? 'rbf-indicated' : ''} ${
                       isSelected ? 'selected' : ''
                     } ${isNew ? 'node-enter-now flow-pulse-inbound' : ''} ${
+                      isConfirmed ? 'node-exit-confirmed' : ''
+                    } ${isRemoved ? 'node-exit-removed' : ''} ${
                       isCompact ? 'node-compact' : isMedium ? 'node-medium' : 'node-large'
                     } ${isPending ? 'pending-hydration' : ''}`}
-                    style={{
-                      left: `${layout.leftPercent}%`,
-                      top: `${layout.topPercent}%`,
-                      width: `${layout.sizePx}px`,
-                      height: `${layout.sizePx}px`,
-                    }}
+                    style={
+                      {
+                        left: `${(93 + layout.visualOffsetX).toFixed(4)}%`,
+                        top: `${(layout.topPercent + layout.visualOffsetY).toFixed(4)}%`,
+                        width: `${layout.sizePx}px`,
+                        height: `${layout.sizePx}px`,
+                        '--stream-duration': `${streamDuration}s`,
+                        '--stream-delay': `${streamDelay}s`,
+                        '--stream-drift-span': `88cqi`,
+                        '--static-left': `${layout.leftPercent}%`,
+                        '--node-y': `${layout.topPercent}%`,
+                        '--visual-offset-x': `${layout.visualOffsetX}%`,
+                        '--visual-offset-y': `${layout.visualOffsetY}%`,
+                        '--bob-duration': `${layout.bobDuration}s`,
+                        '--bob-delay': `${layout.bobDelay}s`,
+                      } as React.CSSProperties
+                    }
                     onClick={() => {
                       triggerElementRef.current = document.activeElement as HTMLElement
                       setSelectedTx(tx)
@@ -1240,30 +1286,33 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         : 'No fee rate'
                     }`}
                   >
-                    {/* Clean inner orb: only shown for medium and large tiers */}
-                    {!isCompact && (
-                      <div className="node-orb-inner">
-                        <span className="node-vsize-num">{isPending ? '…' : tx.vsize}</span>
-                        {!isMedium && !isPending && <span className="node-vsize-unit">vB</span>}
-                      </div>
-                    )}
+                    {/* Subtle organic bobbing wrapper */}
+                    <div className="node-organic-bob">
+                      {/* Clean inner orb: only shown for medium and large tiers */}
+                      {!isCompact && (
+                        <div className="node-orb-inner">
+                          <span className="node-vsize-num">{isPending ? '…' : tx.vsize}</span>
+                          {!isMedium && !isPending && <span className="node-vsize-unit">vB</span>}
+                        </div>
+                      )}
 
-                    {/* Outside badges: only in large tier */}
-                    {!isCompact && !isMedium && hasWitness && (
-                      <span className="node-segwit-dot" title="SegWit witness data present">
-                        W
-                      </span>
-                    )}
-                    {!isCompact && !isMedium && isRbf && (
-                      <span className="node-rbf-badge" title="BIP 125 Explicit RBF">
-                        RBF
-                      </span>
-                    )}
+                      {/* Outside badges: only in large tier */}
+                      {!isCompact && !isMedium && hasWitness && (
+                        <span className="node-segwit-dot" title="SegWit witness data present">
+                          W
+                        </span>
+                      )}
+                      {!isCompact && !isMedium && isRbf && (
+                        <span className="node-rbf-badge" title="BIP 125 Explicit RBF">
+                          RBF
+                        </span>
+                      )}
+                    </div>
 
                     {/* Polished floating tooltip card on hover / focus */}
                     <div
                       className={`node-floating-tooltip ${
-                        layout.lane <= 2 ? 'tooltip-open-down' : 'tooltip-open-up'
+                        layout.topPercent <= 50 ? 'tooltip-open-down' : 'tooltip-open-up'
                       }`}
                       role="tooltip"
                     >
@@ -1272,8 +1321,8 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         <code className="tooltip-txid-code">{truncateHash(tx.txid, 5, 4)}</code>
                       </div>
                       <div className="tooltip-metrics-row">
-                        <span className="tooltip-age" title="Observed recency by TxSignX">
-                          {formatRelativeTime(tx.observed_at ?? tx.first_seen_at)}
+                        <span className="tooltip-age" title="Observed by TxSignX">
+                          Observed by TxSignX: {formatRelativeTime(tx.observed_at ?? tx.first_seen_at)}
                         </span>
                         <span className="tooltip-sep">·</span>
                         <span className="tooltip-vsize">{displayVsize}</span>

@@ -65,10 +65,14 @@ export interface PlacedNodeLayout {
   txid: string
   leftPercent: number
   topPercent: number
+  visualOffsetX: number
+  visualOffsetY: number
   lane: number
   sizePx: number
   isOverflow: boolean
   densityTier: 'large' | 'medium' | 'compact'
+  bobDuration: number
+  bobDelay: number
 }
 
 // 6 primary lanes for large tier
@@ -82,6 +86,50 @@ export const LANE_PERCENTAGES_COMPACT = [
 
 // Default export alias for backwards compatibility
 export const LANE_PERCENTAGES = LANE_PERCENTAGES_LARGE
+
+/**
+ * PRESENTATION-ONLY visual offset geometry.
+ *
+ * NOTE: This is purely visual presentation geometry to prevent same-second
+ * batch arrivals from forming a rigid vertical barcode line.
+ * It is NOT Bitcoin metadata, does NOT modify `observed_at` or `first_seen_at`,
+ * and is NEVER shown in tooltips, reports, or factual displays.
+ */
+export function getVisualOffset(txid: string): {
+  offsetXPercent: number
+  offsetYPercent: number
+  bobDuration: number
+  bobDelay: number
+} {
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c64e6d
+  for (let i = 0; i < txid.length; i++) {
+    const ch = txid.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+
+  // Deterministic horizontal spread within [-1.8%, +1.8%] to break barcode columns
+  const normX = ((h1 >>> 0) % 1000) / 1000
+  const offsetXPercent = (normX - 0.5) * 3.6
+
+  // Deterministic vertical micro-spread within [-2.0%, +2.0%]
+  const normY = ((h2 >>> 0) % 1000) / 1000
+  const offsetYPercent = (normY - 0.5) * 4.0
+
+  // Secondary atmospheric bobbing: duration 3.6s - 5.8s, phase delay 0s - 3.8s
+  const bobDuration = 3.6 + (((h1 >>> 4) % 22) * 0.1)
+  const bobDelay = ((h2 >>> 4) % 38) * 0.1
+
+  return {
+    offsetXPercent,
+    offsetYPercent,
+    bobDuration,
+    bobDelay,
+  }
+}
 
 export function computeCollisionFreeLayout(
   transactions: LiveTransaction[],
@@ -111,7 +159,7 @@ export function computeCollisionFreeLayout(
   })
 
   // Track placed nodes in each lane: [laneIndex] -> Array of placed items
-  const lanes: Array<Array<{ txid: string; leftPercent: number; sizePx: number }>> = Array.from(
+  const lanes: Array<Array<{ txid: string; leftPercent: number; topPercent: number; sizePx: number }>> = Array.from(
     { length: laneTops.length },
     () => []
   )
@@ -122,6 +170,8 @@ export function computeCollisionFreeLayout(
     const progress = Math.min(1.0, Math.max(0, ageSeconds / windowSeconds))
     // NOW at right (92%), window boundary at left (6%)
     const baseLeftPercent = (1 - progress) * 86 + 6
+
+    const visualOffset = getVisualOffset(tx.txid)
 
     let sizePx: number
     let clearancePercent: number
@@ -152,6 +202,7 @@ export function computeCollisionFreeLayout(
 
     let chosenLane = -1
     let leftPercent = baseLeftPercent
+    let topPercent = 50
     let isOverflow = false
 
     if (densityTier === 'large') {
@@ -194,8 +245,9 @@ export function computeCollisionFreeLayout(
           leftPercent = Math.min(94, Math.max(4, baseLeftPercent + staggerAmount))
         }
       }
+      topPercent = laneTops[chosenLane]
     } else {
-      // Medium and Compact tiers: deterministic lane preference using TXID hash
+      // Medium and Compact tiers: continuous vertical distribution with deterministic hash
       let hash = 0
       for (let i = 0; i < tx.txid.length; i++) {
         hash = ((hash << 5) - hash) + tx.txid.charCodeAt(i)
@@ -234,17 +286,27 @@ export function computeCollisionFreeLayout(
         const staggerAmount = (((txIndex % 3) + 1) * 0.8) * staggerDirection
         leftPercent = Math.min(94, Math.max(5, baseLeftPercent + staggerAmount))
       }
+
+      // Continuous Y calculation within safe stream band (8% to 90%)
+      const baseLaneTop = laneTops[chosenLane]
+      // Micro vertical jitter derived from hash (between -1.5% and +1.5%) to break rigid grid lines
+      const continuousYJitter = (((Math.abs(hash >>> 5) % 100) / 100) - 0.5) * 3.0
+      topPercent = Math.min(90, Math.max(8, baseLaneTop + continuousYJitter))
     }
 
-    lanes[chosenLane].push({ txid: tx.txid, leftPercent, sizePx })
+    lanes[chosenLane].push({ txid: tx.txid, leftPercent, topPercent, sizePx })
     result.set(tx.txid, {
       txid: tx.txid,
       leftPercent,
-      topPercent: laneTops[chosenLane],
+      topPercent,
+      visualOffsetX: visualOffset.offsetXPercent,
+      visualOffsetY: visualOffset.offsetYPercent,
       lane: chosenLane,
       sizePx,
       isOverflow,
       densityTier,
+      bobDuration: visualOffset.bobDuration,
+      bobDelay: visualOffset.bobDelay,
     })
   })
 

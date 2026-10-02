@@ -16,10 +16,33 @@ export function Header({page}:HeaderProps){
     return ()=>window.removeEventListener('scroll',onScroll)
   },[])
 
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (window.location.hash === '#home' || page === '#home') {
+      e.preventDefault()
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      window.location.hash = '#home'
+    }
+  }
+
+  const handleNavClick = (targetHash: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (window.location.hash === targetHash || page === targetHash) {
+      e.preventDefault()
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      window.location.hash = targetHash
+    }
+  }
+
   return (
     <header className={`site-header ${scrolled?'scrolled':''}`}>
       <div className="header-inner">
-        <a className="wordmark" href="#live" aria-label="TxSignX Live Chain">
+        <a
+          className="wordmark"
+          href="#home"
+          aria-label="TxSignX Home"
+          onClick={handleLogoClick}
+        >
           <span className="wordmark-icon" aria-hidden="true">
             <svg viewBox="0 0 32 32" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
               <polygon points="16,3 29,10.5 29,21.5 16,29 3,21.5 3,10.5" stroke="#243041" strokeWidth="2" fill="#111827"/>
@@ -31,14 +54,23 @@ export function Header({page}:HeaderProps){
         <nav aria-label="Main navigation">
           <a
             href="#live"
-            aria-current={page === '' || page === '#live' || page === '#home' ? 'page' : undefined}
+            aria-current={page === '#live' ? 'page' : undefined}
+            onClick={handleNavClick('#live')}
           >
             Live Chain
           </a>
-          <a href="#inspector" aria-current={page === '#inspector' ? 'page' : undefined}>
+          <a
+            href="#inspector"
+            aria-current={page === '#inspector' ? 'page' : undefined}
+            onClick={handleNavClick('#inspector')}
+          >
             Inspector
           </a>
-          <a href="#policies" aria-current={page === '#policies' ? 'page' : undefined}>
+          <a
+            href="#policies"
+            aria-current={page === '#policies' ? 'page' : undefined}
+            onClick={handleNavClick('#policies')}
+          >
             Policies
           </a>
           <a href="https://github.com/j-kon/txsignx" target="_blank" rel="noreferrer">

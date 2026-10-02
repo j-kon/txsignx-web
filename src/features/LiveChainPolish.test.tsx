@@ -98,7 +98,7 @@ class MockWebSocket {
 
 describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () => {
   beforeEach(() => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     MockWebSocket.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket)
     vi.stubGlobal(

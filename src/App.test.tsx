@@ -704,6 +704,10 @@ describe('product flows',()=>{
 })
 
 describe('Live Chain Observability Interface', () => {
+  beforeEach(() => {
+    window.location.hash = '#live'
+  })
+
   it('loads live snapshot directly from ApiClient', async () => {
     const api = new ApiClient('http://127.0.0.1:8080')
     const snap = await api.liveSnapshot()
@@ -711,8 +715,8 @@ describe('Live Chain Observability Interface', () => {
     expect(snap.tip_height).toBe(101)
   })
 
-  it('renders Live Chain as default entry experience with stats, recent blocks, and mempool flow', async () => {
-    window.location.hash = ''
+  it('renders Live Chain under #live with stats, recent blocks, and mempool flow', async () => {
+    window.location.hash = '#live'
     render(<App />)
 
     expect(screen.getByRole('heading', { name: 'Live Bitcoin Chain & Mempool' })).toBeTruthy()
@@ -726,7 +730,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('renders recent blocks with height, short hash, count, weight, and timestamp/age', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Recent Blocks' })).toBeTruthy()
@@ -738,7 +742,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('renders mempool stats accurately', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     expect(await screen.findByText(/\(1\.2\s*kB\)/i)).toBeTruthy()
@@ -746,7 +750,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('renders live transaction nodes with encoding legend', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'TxSignX Live Flow' })).toBeTruthy()
@@ -762,7 +766,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('opens transaction preview side drawer upon clicking a live node and verifies values', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     const txNode = await screen.findByText('7b055…1101')
@@ -787,7 +791,7 @@ describe('Live Chain Observability Interface', () => {
   it('clicks Explore Transaction from side drawer and opens Transaction Explorer report', async () => {
     currentCaps = { ...caps, node_context_available: true }
     txReport = txidConfirmed
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     const txNode = await screen.findByText('7b055…1101')
@@ -804,7 +808,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('handles live transaction events via WebSocket stream', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     await screen.findByText('7b055…1101')
@@ -832,7 +836,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('handles live block connected events via WebSocket stream', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     await screen.findAllByText(/#101/)
@@ -858,7 +862,7 @@ describe('Live Chain Observability Interface', () => {
   it('supports universal search bar direct lookup into Transaction Explorer', async () => {
     currentCaps = { ...caps, node_context_available: true }
     txReport = txidConfirmed
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     const searchInput = screen.getByPlaceholderText(/Search transaction ID/)
@@ -871,7 +875,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('navigates to manual Inspector via Inspect manually button', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     const manualBtn = await screen.findByRole('button', { name: 'Inspect manually' })
@@ -890,7 +894,7 @@ describe('Live Chain Observability Interface', () => {
       mempool_size_bytes: 0,
       latest_transactions: []
     }
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     expect(await screen.findByText('Mempool is currently empty on this node')).toBeTruthy()
@@ -903,7 +907,7 @@ describe('Live Chain Observability Interface', () => {
       if (url.endsWith('live/snapshot')) return new Response(JSON.stringify({ error: { code: 'node_unavailable', message: 'RPC down' } }), { status: 503, headers: { 'Content-Type': 'application/json' } })
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
     }))
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     expect(await screen.findByRole('alert')).toBeTruthy()
@@ -912,7 +916,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('toggles display mode between Live Flow and Transaction Flow Graph', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
@@ -927,7 +931,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('updates stream status when WebSocket disconnects', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     await screen.findByText(/Live \(streaming\)/)
@@ -952,7 +956,7 @@ describe('Live Chain Observability Interface', () => {
       ...defaultSnapshot,
       network: '',
     }
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     const networkCard = await screen.findByLabelText('Bitcoin network status')
@@ -968,7 +972,7 @@ describe('Live Chain Observability Interface', () => {
       mempool_size_bytes: null,
       latest_transactions: null,
     }
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     expect(await screen.findByText('Unavailable')).toBeTruthy()
@@ -990,7 +994,7 @@ describe('Live Chain Observability Interface', () => {
         }
       ]
     }
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     const txCard = await screen.findByText('11111…1111')
@@ -1004,7 +1008,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('safely ignores malformed or unknown WebSocket messages without crashing', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     await screen.findByText('7b055…1101')
@@ -1019,7 +1023,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('updates mempool statistics authoritatively on mempool_updated event', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     await screen.findByText('7b055…1101')
@@ -1041,7 +1045,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('removes transaction and tracks confirmation on transaction_confirmed event', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     await screen.findByText('7b055…1101')
@@ -1065,7 +1069,7 @@ describe('Live Chain Observability Interface', () => {
   })
 
   it('maintains matching coordinates between DAG node cards and SVG paths in graph mode', async () => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
@@ -1083,7 +1087,7 @@ describe('Live Chain Observability Interface', () => {
 
   describe('Live Chain Exploration & Visual Upgrades (Phase 5)', () => {
     it('Recent Block card is keyboard and click interactive', async () => {
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
@@ -1098,7 +1102,7 @@ describe('Live Chain Observability Interface', () => {
     })
 
     it('renders authoritative block details and secondary blockchain facts in drawer', async () => {
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
@@ -1122,7 +1126,7 @@ describe('Live Chain Observability Interface', () => {
     })
 
     it('renders paginated transaction list with coinbase badge identification', async () => {
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
@@ -1158,7 +1162,7 @@ describe('Live Chain Observability Interface', () => {
         },
       }
 
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
@@ -1192,7 +1196,7 @@ describe('Live Chain Observability Interface', () => {
 
     it('clicking transaction in block drawer opens Explorer with contextual back path', async () => {
       txReport = txidConfirmed
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
@@ -1222,7 +1226,7 @@ describe('Live Chain Observability Interface', () => {
     })
 
     it('closes block drawer on Escape key and restores focus', async () => {
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
@@ -1241,7 +1245,7 @@ describe('Live Chain Observability Interface', () => {
     })
 
     it('animates new block into chain tip on block_connected event', async () => {
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       await screen.findAllByText('#101')
@@ -1269,7 +1273,7 @@ describe('Live Chain Observability Interface', () => {
     })
 
     it('positions live stream node along the time axis using first_seen_at', async () => {
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       await screen.findByText('7b055…1101')
@@ -1281,7 +1285,7 @@ describe('Live Chain Observability Interface', () => {
     })
 
     it('handles transaction_added event at the NOW edge with pulse', async () => {
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       await screen.findByText('7b055…1101')
@@ -1312,7 +1316,7 @@ describe('Live Chain Observability Interface', () => {
     })
 
     it('handles transaction_removed event neutrally', async () => {
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       await screen.findByText('7b055…1101')
@@ -1340,7 +1344,7 @@ describe('Live Chain Observability Interface', () => {
         clipboard: { writeText: writeTextMock },
       })
 
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       const node = await screen.findByText('7b055…1101')
@@ -1382,7 +1386,7 @@ describe('Live Chain Observability Interface', () => {
         difficulty: null,
       }
 
-      window.location.hash = ''
+      window.location.hash = '#live'
       render(<App />)
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
@@ -1484,7 +1488,7 @@ describe('Live Chain Observability Interface', () => {
       })
 
       it('transaction node text does not contain oversized multi-line content', async () => {
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
         const node = await screen.findByText('7b055…1101')
         const button = node.closest('.stream-tx-node') as HTMLElement
@@ -1496,7 +1500,7 @@ describe('Live Chain Observability Interface', () => {
       })
 
       it('tooltip contains TXID/vsize/fee rate', async () => {
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
         const node = await screen.findByText('7b055…1101')
         const button = node.closest('.stream-tx-node') as HTMLElement
@@ -1512,7 +1516,7 @@ describe('Live Chain Observability Interface', () => {
       it('current tip is targeted for initial scroll', async () => {
         const scrollMock = vi.fn()
         Element.prototype.scrollIntoView = scrollMock
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
         const tipCard = await screen.findByRole('button', { name: /Explore block #101/i })
         await waitFor(() => {
@@ -1525,7 +1529,7 @@ describe('Live Chain Observability Interface', () => {
       it('block_connected targets new tip', async () => {
         const scrollMock = vi.fn()
         Element.prototype.scrollIntoView = scrollMock
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
         await screen.findByRole('button', { name: /Explore block #101/i })
         scrollMock.mockClear()
@@ -1553,7 +1557,7 @@ describe('Live Chain Observability Interface', () => {
       it('manual historical scroll is not repeatedly overridden', async () => {
         const scrollMock = vi.fn()
         Element.prototype.scrollIntoView = scrollMock
-        window.location.hash = ''
+        window.location.hash = '#live'
         const { container } = render(<App />)
         await screen.findByRole('button', { name: /Explore block #101/i })
         await waitFor(() => expect(scrollMock).toHaveBeenCalled())
@@ -1605,7 +1609,7 @@ describe('Live Chain Observability Interface', () => {
           dispatchEvent: vi.fn(),
         }))
 
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
         await screen.findByRole('button', { name: /Explore block #101/i })
 
@@ -1619,15 +1623,15 @@ describe('Live Chain Observability Interface', () => {
         window.matchMedia = originalMatchMedia
       })
 
-      it('Live Chain route/hash is consistent and normalizes #home to #live', async () => {
-        window.location.hash = '#home'
+      it('Live Chain route/hash is consistent and wordmark links to #home', async () => {
+        window.location.hash = '#live'
         render(<App />)
 
         expect(window.location.hash).toBe('#live')
         expect(await screen.findByRole('heading', { name: 'Live Bitcoin Chain & Mempool' })).toBeTruthy()
 
-        const wordmark = screen.getByLabelText('TxSignX Live Chain')
-        expect(wordmark.getAttribute('href')).toBe('#live')
+        const wordmark = screen.getByLabelText('TxSignX Home')
+        expect(wordmark.getAttribute('href')).toBe('#home')
 
         const liveNav = screen.getByRole('link', { name: 'Live Chain' })
         expect(liveNav.getAttribute('aria-current')).toBe('page')
@@ -1649,7 +1653,7 @@ describe('Live Chain Observability Interface', () => {
           latest_transactions: defaultSnapshot.latest_transactions,
         }
 
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
 
         expect(await screen.findByText('Bitcoin Mainnet')).toBeTruthy()
@@ -1663,7 +1667,7 @@ describe('Live Chain Observability Interface', () => {
       })
 
       it('supports density switching between CALM (80), NORMAL (180), and DENSE (300)', async () => {
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
 
         await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
@@ -1691,7 +1695,7 @@ describe('Live Chain Observability Interface', () => {
           source_label: 'Public Mainnet Feed',
         }
 
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
 
         const txNode = await screen.findByText('7b055…1101')
@@ -1716,7 +1720,7 @@ describe('Live Chain Observability Interface', () => {
           source_label: 'Bitcoin Core',
         }
 
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
 
         const txNode = await screen.findByText('7b055…1101')
@@ -1727,7 +1731,7 @@ describe('Live Chain Observability Interface', () => {
       })
 
       it('handles transaction_updated event to hydrate pending mainnet transactions', async () => {
-        window.location.hash = ''
+        window.location.hash = '#live'
         render(<App />)
 
         await screen.findByText('7b055…1101')

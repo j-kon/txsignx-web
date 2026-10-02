@@ -150,7 +150,42 @@ export const liveEventSchema = {
   },
 }
 
+export const blockTransactionItemSchema = object({
+  index: uint,
+  txid: str,
+  is_coinbase: bool,
+})
+
+export const blockTransactionPageSchema = object({
+  items: array(blockTransactionItemSchema),
+  offset: uint,
+  limit: uint,
+  total: uint,
+  has_more: bool,
+})
+
+export const blockDetailsSchema = object({
+  network: str,
+  height: uint,
+  hash: str,
+  previous_block_hash: optional(str),
+  next_block_hash: optional(str),
+  merkle_root: optional(str),
+  version: optional(integer),
+  timestamp: uint,
+  median_time: optional(uint),
+  bits: optional(str),
+  difficulty: optional(float),
+  tx_count: uint,
+  weight: optional(uint),
+  size: optional(uint),
+  transactions: blockTransactionPageSchema,
+})
+
 export type RecentBlock = Infer<typeof recentBlockSchema>
+export type BlockTransactionItem = Infer<typeof blockTransactionItemSchema>
+export type BlockTransactionPage = Infer<typeof blockTransactionPageSchema>
+export type BlockDetails = Infer<typeof blockDetailsSchema>
 export type MempoolSummary = Infer<typeof mempoolSummarySchema>
 export type LiveTransaction = Infer<typeof liveTransactionSchema>
 export type LiveSnapshot = Infer<typeof liveSnapshotSchema>

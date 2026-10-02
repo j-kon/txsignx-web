@@ -311,4 +311,60 @@ describe('API boundary', () => {
     expect(liveEventSchema.parse({ type: 'transaction_added', data: { missing_txid: 123 } })).toBeNull()
     expect(liveEventSchema.parse({ type: 'block_connected', data: { height: -1 } })).toBeNull()
   })
+
+  it('fetches block details by hash and height with bounded query parameters', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    const sampleBlock = {
+      network: 'regtest',
+      height: 105,
+      hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      previous_block_hash: '1111111111111111111111111111111111111111111111111111111111111111',
+      next_block_hash: null,
+      merkle_root: '2222222222222222222222222222222222222222222222222222222222222222',
+      version: 536870912,
+      timestamp: 1700000105,
+      median_time: 1700000100,
+      bits: '207fffff',
+      difficulty: 0.000000001,
+      tx_count: 2,
+      weight: 888,
+      size: 249,
+      transactions: {
+        items: [
+          { index: 0, txid: '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b', is_coinbase: true },
+          { index: 1, txid: '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101', is_coinbase: false },
+        ],
+        offset: 0,
+        limit: 50,
+        total: 2,
+        has_more: false,
+      },
+    }
+
+    reply(sampleBlock)
+    const res = await api.blockDetails('000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f', 0, 50)
+    expect(res.height).toBe(105)
+    expect(res.transactions.items[0].is_coinbase).toBe(true)
+    expect(fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8080/api/v1/blocks/000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f?offset=0&limit=50',
+      expect.objectContaining({ method: 'GET' })
+    )
+
+    reply(sampleBlock)
+    const byHeight = await api.blockDetailsByHeight(105)
+    expect(byHeight.height).toBe(105)
+    expect(fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8080/api/v1/blocks/height/105',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  it('translates invalid_block_hash and block_not_found errors properly', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    reply({ error: { code: 'invalid_block_hash' } }, 400)
+    await expect(api.blockDetails('invalid')).rejects.toThrow('The supplied block hash is invalid.')
+
+    reply({ error: { code: 'block_not_found' } }, 404)
+    await expect(api.blockDetails('0000000000000000000000000000000000000000000000000000000000000404')).rejects.toThrow('Block not found.')
+  })
 })

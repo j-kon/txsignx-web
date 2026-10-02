@@ -114,8 +114,49 @@ class MockWebSocket {
   }
 }
 
+const mockBlockDetails = {
+  network: 'regtest',
+  height: 101,
+  hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+  previous_block_hash: '000000000029d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce270',
+  next_block_hash: null,
+  merkle_root: '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b',
+  version: 536870912,
+  timestamp: 1700000000,
+  median_time: 1699999900,
+  bits: '207fffff',
+  difficulty: 1.0,
+  tx_count: 3,
+  weight: 4200,
+  size: 1500,
+  transactions: {
+    items: [
+      {
+        index: 0,
+        txid: '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b',
+        is_coinbase: true
+      },
+      {
+        index: 1,
+        txid: '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101',
+        is_coinbase: false
+      },
+      {
+        index: 2,
+        txid: '8c0664cc2930678c6808cf093fd58105c9f32894bf52199fd4ed82d1911e2212',
+        is_coinbase: false
+      }
+    ],
+    offset: 0,
+    limit: 50,
+    total: 3,
+    has_more: false
+  }
+}
+
 let currentCaps={...caps}
 let liveSnapshotData = JSON.parse(JSON.stringify(defaultSnapshot))
+let blockDetailsData = JSON.parse(JSON.stringify(mockBlockDetails))
 let report:unknown=pass
 let txReport:unknown=raw
 let error=false
@@ -124,6 +165,7 @@ beforeEach(()=>{
   window.location.hash=''
   currentCaps={...caps}
   liveSnapshotData = JSON.parse(JSON.stringify(defaultSnapshot))
+  blockDetailsData = JSON.parse(JSON.stringify(mockBlockDetails))
   report=pass
   txReport=raw
   error=false
@@ -134,6 +176,7 @@ beforeEach(()=>{
     :url.endsWith('policies')?policies
     :url.endsWith('live/snapshot')?liveSnapshotData
     :url.endsWith('blocks/recent')?liveSnapshotData.recent_blocks
+    :url.includes('/blocks/')?blockDetailsData
     :url.endsWith('mempool/summary')?{tx_count:liveSnapshotData.mempool_tx_count,size_bytes:liveSnapshotData.mempool_size_bytes}
     :error?{error:{code:'invalid_psbt',message:'NEVER ECHO THIS'}}
     :url.endsWith('transactions/inspect')?txReport
@@ -1035,5 +1078,320 @@ describe('Live Chain Observability Interface', () => {
     expect(svgLine?.getAttribute('y1')).toBe('64')
     expect(svgLine?.getAttribute('x2')).toBe('360')
     expect(svgLine?.getAttribute('y2')).toBe('64')
+  })
+
+  describe('Live Chain Exploration & Visual Upgrades (Phase 5)', () => {
+    it('Recent Block card is keyboard and click interactive', async () => {
+      window.location.hash = ''
+      render(<App />)
+
+      const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
+      expect(blockBtn).toBeTruthy()
+      expect(blockBtn.getAttribute('aria-haspopup')).toBe('dialog')
+
+      // Click to open drawer
+      fireEvent.click(blockBtn)
+
+      const drawer = await screen.findByRole('dialog', { name: /Block #101/i })
+      expect(drawer).toBeTruthy()
+    })
+
+    it('renders authoritative block details and secondary blockchain facts in drawer', async () => {
+      window.location.hash = ''
+      render(<App />)
+
+      const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
+      fireEvent.click(blockBtn)
+
+      await screen.findByRole('dialog', { name: /Block #101/i })
+
+      // Primary stats
+      expect(screen.getByText('Height')).toBeTruthy()
+      expect(screen.getAllByText('#101').length).toBeGreaterThan(0)
+      expect(screen.getByText('4,200 WU')).toBeTruthy()
+      expect(screen.getByText('1,500 B')).toBeTruthy()
+
+      // Secondary blockchain facts
+      expect(screen.getByText('Merkle Root')).toBeTruthy()
+      expect(screen.getByText('Previous Block')).toBeTruthy()
+      expect(screen.getByText('Version')).toBeTruthy()
+      expect(screen.getByText('Bits')).toBeTruthy()
+      expect(screen.getByText('Median Time')).toBeTruthy()
+      expect(screen.getByText('Difficulty')).toBeTruthy()
+    })
+
+    it('renders paginated transaction list with coinbase badge identification', async () => {
+      window.location.hash = ''
+      render(<App />)
+
+      const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
+      fireEvent.click(blockBtn)
+
+      await screen.findByRole('dialog', { name: /Block #101/i })
+
+      // Transactions section
+      expect(await screen.findByText('Transactions in Block (3)')).toBeTruthy()
+
+      // Coinbase badge on index 0
+      const coinbaseBadges = screen.getAllByText('Coinbase')
+      expect(coinbaseBadges.length).toBe(1)
+
+      // Transaction items rendered
+      expect(screen.getAllByText(/4a5e1e/).length).toBeGreaterThan(0)
+      expect(screen.getByText(/7b0553/)).toBeTruthy()
+      expect(screen.getByText(/8c0664/)).toBeTruthy()
+    })
+
+    it('supports pagination via Load More transactions in block drawer', async () => {
+      // Setup mock data with has_more: true
+      blockDetailsData = {
+        ...mockBlockDetails,
+        transactions: {
+          items: [
+            { index: 0, txid: '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b', is_coinbase: true },
+          ],
+          offset: 0,
+          limit: 1,
+          total: 2,
+          has_more: true,
+        },
+      }
+
+      window.location.hash = ''
+      render(<App />)
+
+      const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
+      fireEvent.click(blockBtn)
+
+      await screen.findByRole('dialog', { name: /Block #101/i })
+
+      const loadMoreBtn = await screen.findByRole('button', { name: /Load more transactions/i })
+      expect(loadMoreBtn).toBeTruthy()
+
+      // Update mock for next page
+      blockDetailsData = {
+        ...mockBlockDetails,
+        transactions: {
+          items: [
+            { index: 1, txid: '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101', is_coinbase: false },
+          ],
+          offset: 1,
+          limit: 1,
+          total: 2,
+          has_more: false,
+        },
+      }
+
+      fireEvent.click(loadMoreBtn)
+
+      await waitFor(() => {
+        expect(screen.getByText(/7b0553/)).toBeTruthy()
+      })
+    })
+
+    it('clicking transaction in block drawer opens Explorer with contextual back path', async () => {
+      txReport = txidConfirmed
+      window.location.hash = ''
+      render(<App />)
+
+      const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
+      fireEvent.click(blockBtn)
+
+      await screen.findByRole('dialog', { name: /Block #101/i })
+
+      const exploreLinks = screen.getAllByRole('button', { name: /Explore Transaction/i })
+      expect(exploreLinks.length).toBeGreaterThan(0)
+      fireEvent.click(exploreLinks[0])
+
+      // Should open Transaction Explorer report
+      await screen.findAllByText('Transaction Explorer')
+      const backToBlockBtn = screen.getByRole('button', { name: /← Back to Block #101/i })
+      const backToLiveBtn = screen.getByRole('button', { name: /← Back to Live Chain/i })
+      expect(backToBlockBtn).toBeTruthy()
+      expect(backToLiveBtn).toBeTruthy()
+
+      // Clicking Back to Block returns to block drawer
+      fireEvent.click(backToBlockBtn)
+      expect(await screen.findByRole('dialog', { name: /Block #101/i })).toBeTruthy()
+
+      // Closing drawer returns to Live Chain
+      const closeBtn = screen.getByRole('button', { name: /Close block details/i })
+      fireEvent.click(closeBtn)
+      expect(screen.queryByRole('dialog', { name: /Block #101/i })).toBeNull()
+    })
+
+    it('closes block drawer on Escape key and restores focus', async () => {
+      window.location.hash = ''
+      render(<App />)
+
+      const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
+      blockBtn.focus()
+      fireEvent.click(blockBtn)
+
+      await screen.findByRole('dialog', { name: /Block #101/i })
+
+      // Press Escape
+      fireEvent.keyDown(window, { key: 'Escape' })
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: /Block #101/i })).toBeNull()
+      })
+      expect(document.activeElement).toBe(blockBtn)
+    })
+
+    it('animates new block into chain tip on block_connected event', async () => {
+      window.location.hash = ''
+      render(<App />)
+
+      await screen.findAllByText('#101')
+      const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+      expect(ws).toBeDefined()
+
+      // Broadcast block_connected
+      ws.emit({
+        type: 'block_connected',
+        data: {
+          height: 102,
+          hash: '000000000039d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce271',
+          tx_count: 8,
+          weight: 7500,
+          size: 2100,
+          timestamp: 1700000600,
+        },
+      })
+
+      // Chain rail displays #102 as TIP
+      expect((await screen.findAllByText('#102')).length).toBeGreaterThan(0)
+      const newCard = document.querySelector('.chain-block-card.tip-card')
+      expect(newCard).not.toBeNull()
+      expect(newCard?.textContent).toContain('#102')
+    })
+
+    it('positions live stream node along the time axis using first_seen_at', async () => {
+      window.location.hash = ''
+      render(<App />)
+
+      await screen.findByText('7b055…1101')
+      const streamNodes = document.querySelectorAll('.stream-tx-node')
+      expect(streamNodes.length).toBeGreaterThan(0)
+      const firstNode = streamNodes[0] as HTMLElement
+      // Verify style has a calculated left position percentage
+      expect(firstNode.style.left).toMatch(/%$/)
+    })
+
+    it('handles transaction_added event at the NOW edge with pulse', async () => {
+      window.location.hash = ''
+      render(<App />)
+
+      await screen.findByText('7b055…1101')
+      const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+      expect(ws).toBeDefined()
+
+      ws.emit({
+        type: 'transaction_added',
+        data: {
+          txid: '9999999999999999999999999999999999999999999999999999999999999999',
+          wtxid: '8888888888888888888888888888888888888888888888888888888888888888',
+          vsize: 180,
+          weight: 720,
+          fee_sats: 1800,
+          fee_rate: 10.0,
+          input_count: 1,
+          output_count: 2,
+          explicit_rbf: true,
+          has_witness: true,
+          first_seen_at: Math.floor(Date.now() / 1000),
+          depends: [],
+        },
+      })
+
+      expect(await screen.findByText('99999…9999')).toBeTruthy()
+      const newNode = document.querySelector('[data-txid="9999999999999999999999999999999999999999999999999999999999999999"]')
+      expect(newNode?.classList.contains('flow-pulse-inbound')).toBe(true)
+    })
+
+    it('handles transaction_removed event neutrally', async () => {
+      window.location.hash = ''
+      render(<App />)
+
+      await screen.findByText('7b055…1101')
+      const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+      expect(ws).toBeDefined()
+
+      ws.emit({
+        type: 'transaction_removed',
+        data: {
+          txid: '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101',
+          reason: 'replaced',
+        },
+      })
+
+      await waitFor(() => {
+        expect(screen.queryByText('7b055…1101')).toBeNull()
+      })
+      expect(screen.getByText('8c066…2212')).toBeTruthy()
+    })
+
+    it('copies TXID in preview drawer and shows Copied feedback', async () => {
+      const writeTextMock = vi.fn().mockResolvedValue(undefined)
+      vi.stubGlobal('navigator', {
+        ...navigator,
+        clipboard: { writeText: writeTextMock },
+      })
+
+      window.location.hash = ''
+      render(<App />)
+
+      const node = await screen.findByText('7b055…1101')
+      fireEvent.click(node)
+
+      await screen.findByRole('dialog', { name: /Transaction Preview/i })
+
+      const copyBtn = screen.getByRole('button', { name: /Copy TXID/i })
+      fireEvent.click(copyBtn)
+
+      await waitFor(() => {
+        expect(writeTextMock).toHaveBeenCalledWith('7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101')
+      })
+      expect(copyBtn.textContent).toContain('Copied')
+    })
+
+    it('verifies CSS contains strict responsive and reduced-motion rules', () => {
+      const proc = (globalThis as unknown as { process?: { getBuiltinModule?: (m: string) => { readFileSync: (p: string, enc: string) => string } } }).process
+      const fs = proc?.getBuiltinModule?.('fs')
+      const css = fs?.readFileSync('src/index.css', 'utf-8') ?? ''
+
+      // Reduced motion rules
+      expect(css).toContain('@media (prefers-reduced-motion: reduce)')
+      expect(css).toContain('.stream-tx-node')
+      expect(css).toContain('.chain-block-card')
+      expect(css).toContain('.dag-edge-animated')
+
+      // Responsive drawer rules
+      expect(css).toContain('@media (max-width: 768px)')
+      expect(css).toContain('.live-chain-drawer')
+      expect(css).toContain('width: 100%')
+    })
+
+    it('renders "—" or "Unavailable" for absent blockchain facts without fabricating values', async () => {
+      blockDetailsData = {
+        ...mockBlockDetails,
+        median_time: null,
+        bits: null,
+        difficulty: null,
+      }
+
+      window.location.hash = ''
+      render(<App />)
+
+      const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
+      fireEvent.click(blockBtn)
+
+      await screen.findByRole('dialog', { name: /Block #101/i })
+
+      // Confirm missing facts render "—"
+      const dashes = screen.getAllByText('—')
+      expect(dashes.length).toBeGreaterThanOrEqual(3)
+    })
   })
 })

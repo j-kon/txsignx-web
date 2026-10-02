@@ -67,7 +67,7 @@ const node = object({configured_network:str,node_network:str,tip:object({height:
 export const preflightSchema = object({inspection:psbtSchema,wallet_context:optional(wallet),node_context:optional(node),policy:object({decision:enumeration('pass','review','block'),risk_level:enumeration('low','medium','high','critical'),highest_severity:nullable(severity),finding_count:uint,findings:array(object({code,severity,title:str,message:str,recommendation:nullable(str),location})),evaluated_rules:array(code),rule_evaluations:array(object({code,status:enumeration('evaluated','partially_evaluated','not_evaluated'),reason:nullable(enumeration('no_wallet_context','no_node_context','no_expected_change_output','no_usable_input_context','some_input_context_unavailable'))})),config:object({max_absolute_fee_sats:uint,max_fee_ratio_bps:uint}),scope_note:str})})
 const ruleFields = {code,title:str,description:str,active:bool,required_context:array(str)}
 export const catalogSchema = object({active_rules:array(object({...ruleFields,default_severity:severity})),deferred_rules:array(object(ruleFields))})
-export const capabilitiesSchema = object({raw_transaction_inspection:bool,transaction_explorer:optional(bool),txid_inspection:optional(bool),transaction_address_rendering:optional(bool),psbt_v0_inspection:bool,wallet_context:bool,node_context_available:bool,live_chain:optional(bool),live_stream:optional(bool),policy_preflight:bool,broadcast_via_api:bool,signing:bool,finalization:bool,psbt_v2:bool,active_rules:uint,deferred_rules:uint})
+export const capabilitiesSchema = object({raw_transaction_inspection:bool,transaction_explorer:optional(bool),txid_inspection:optional(bool),transaction_address_rendering:optional(bool),psbt_v0_inspection:bool,wallet_context:bool,node_context_available:bool,live_chain:optional(bool),live_stream:optional(bool),live_source:optional(str),live_source_label:optional(str),network:optional(str),policy_preflight:bool,broadcast_via_api:bool,signing:bool,finalization:bool,psbt_v2:bool,active_rules:uint,deferred_rules:uint})
 
 export const recentBlockSchema = object({
   height: uint,
@@ -97,6 +97,8 @@ export const liveTransactionSchema = object({
   has_witness: optional(bool),
   first_seen_at: optional(uint),
   depends: optional(array(str)),
+  source: optional(str),
+  hydration_status: optional(str),
 })
 
 export const liveSnapshotSchema = object({
@@ -108,6 +110,8 @@ export const liveSnapshotSchema = object({
   mempool_tx_count: optional(uint),
   mempool_size_bytes: optional(uint),
   latest_transactions: optional(array(liveTransactionSchema)),
+  source: optional(str),
+  source_label: optional(str),
 })
 
 export const liveEventTransactionRemovedSchema = object({
@@ -133,6 +137,8 @@ export const liveEventSchema = {
           return { type: 'snapshot', data: liveSnapshotSchema(obj.data) }
         case 'transaction_added':
           return { type: 'transaction_added', data: liveTransactionSchema(obj.data) }
+        case 'transaction_updated':
+          return { type: 'transaction_updated', data: liveTransactionSchema(obj.data) }
         case 'transaction_removed':
           return { type: 'transaction_removed', data: liveEventTransactionRemovedSchema(obj.data) }
         case 'transaction_confirmed':
@@ -192,6 +198,7 @@ export type LiveSnapshot = Infer<typeof liveSnapshotSchema>
 export type LiveEvent =
   | { type: 'snapshot'; data: LiveSnapshot }
   | { type: 'transaction_added'; data: LiveTransaction }
+  | { type: 'transaction_updated'; data: LiveTransaction }
   | { type: 'transaction_removed'; data: Infer<typeof liveEventTransactionRemovedSchema> }
   | { type: 'transaction_confirmed'; data: Infer<typeof liveEventTransactionConfirmedSchema> }
   | { type: 'block_connected'; data: RecentBlock }

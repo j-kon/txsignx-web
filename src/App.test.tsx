@@ -1634,5 +1634,152 @@ describe('Live Chain Observability Interface', () => {
         expect(liveNav.getAttribute('href')).toBe('#live')
       })
     })
+
+    describe('Bitcoin Mainnet Live Observability & High Density Stream', () => {
+      it('renders Bitcoin Mainnet status and Public Mainnet Feed source badge with trust tooltip', async () => {
+        liveSnapshotData = {
+          network: 'bitcoin',
+          source: 'public_mainnet',
+          source_label: 'Public Mainnet Feed',
+          tip_height: 969562,
+          tip_hash: '00000000000000000001a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
+          mempool_tx_count: 76543,
+          mempool_size_bytes: 84000000,
+          recent_blocks: defaultSnapshot.recent_blocks,
+          latest_transactions: defaultSnapshot.latest_transactions,
+        }
+
+        window.location.hash = ''
+        render(<App />)
+
+        expect(await screen.findByText('Bitcoin Mainnet')).toBeTruthy()
+        expect(screen.getByText(/Public Mainnet Feed/i)).toBeTruthy()
+        expect(screen.getByText('#969,562')).toBeTruthy()
+        expect(screen.getByText('76,543')).toBeTruthy()
+        expect(screen.getByText('2 LIVE')).toBeTruthy()
+
+        const trustBtn = screen.getByLabelText('Source trust info')
+        expect(trustBtn.getAttribute('title')).toContain('Live public Bitcoin data is provided through the configured public feed')
+      })
+
+      it('supports density switching between CALM (80), NORMAL (180), and DENSE (300)', async () => {
+        window.location.hash = ''
+        render(<App />)
+
+        await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+
+        const calmBtn = screen.getByRole('radio', { name: 'Calm density limit 80' })
+        const normalBtn = screen.getByRole('radio', { name: 'Normal density limit 180' })
+        const denseBtn = screen.getByRole('radio', { name: 'Dense density limit 300' })
+
+        expect(normalBtn.getAttribute('aria-checked')).toBe('true')
+
+        fireEvent.click(calmBtn)
+        expect(calmBtn.getAttribute('aria-checked')).toBe('true')
+        expect(normalBtn.getAttribute('aria-checked')).toBe('false')
+
+        fireEvent.click(denseBtn)
+        expect(denseBtn.getAttribute('aria-checked')).toBe('true')
+        expect(calmBtn.getAttribute('aria-checked')).toBe('false')
+      })
+
+      it('renders View source on mempool.space external link in preview drawer for mainnet transactions', async () => {
+        liveSnapshotData = {
+          ...defaultSnapshot,
+          network: 'bitcoin',
+          source: 'public_mainnet',
+          source_label: 'Public Mainnet Feed',
+        }
+
+        window.location.hash = ''
+        render(<App />)
+
+        const txNode = await screen.findByText('7b055…1101')
+        fireEvent.click(txNode)
+
+        expect(await screen.findByRole('dialog', { name: 'Transaction Preview' })).toBeTruthy()
+
+        const externalLink = screen.getByRole('link', { name: 'View source on mempool.space ↗' })
+        expect(externalLink).toBeTruthy()
+        expect(externalLink.getAttribute('href')).toBe(
+          'https://mempool.space/tx/7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101'
+        )
+        expect(externalLink.getAttribute('target')).toBe('_blank')
+        expect(externalLink.getAttribute('rel')).toBe('noopener noreferrer')
+      })
+
+      it('does NOT show public source link when network is regtest', async () => {
+        liveSnapshotData = {
+          ...defaultSnapshot,
+          network: 'regtest',
+          source: 'bitcoin_core',
+          source_label: 'Bitcoin Core',
+        }
+
+        window.location.hash = ''
+        render(<App />)
+
+        const txNode = await screen.findByText('7b055…1101')
+        fireEvent.click(txNode)
+
+        expect(await screen.findByRole('dialog', { name: 'Transaction Preview' })).toBeTruthy()
+        expect(screen.queryByText(/View source on mempool\.space/)).toBeNull()
+      })
+
+      it('handles transaction_updated event to hydrate pending mainnet transactions', async () => {
+        window.location.hash = ''
+        render(<App />)
+
+        await screen.findByText('7b055…1101')
+        const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+        expect(ws).toBeDefined()
+
+        ws.emit({
+          type: 'transaction_updated',
+          data: {
+            txid: '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101',
+            vsize: 155,
+            weight: 620,
+            fee_sats: 1550,
+            fee_rate: 10.0,
+            input_count: 1,
+            output_count: 2,
+            explicit_rbf: true,
+            has_witness: true,
+            hydration_status: 'hydrated',
+            first_seen_at: 1700000010,
+          },
+        })
+
+        expect(await screen.findByText('155 vB')).toBeTruthy()
+      })
+
+      it('renders compact particles when transaction count exceeds 120 (high-density tier)', () => {
+        const txs = Array.from({ length: 150 }, (_, i) => ({
+          txid: `txid_${i.toString().padStart(60, '0')}`,
+          vsize: 140 + (i % 50),
+          weight: 560,
+          first_seen_at: 1700000000 + i,
+        }))
+
+        const layout = computeCollisionFreeLayout(txs as any, 300, 1700000200)
+        expect(layout.size).toBe(150)
+
+        const first = layout.get(txs[0].txid)!
+        expect(first.densityTier).toBe('compact')
+        expect(first.sizePx).toBeLessThanOrEqual(22)
+        expect(first.sizePx).toBeGreaterThanOrEqual(10)
+      })
+
+      it('verifies index.css contains node-compact and density control styles', () => {
+        const proc = (globalThis as unknown as { process?: { getBuiltinModule?: (m: string) => { readFileSync: (p: string, enc: string) => string } } }).process
+        const fs = proc?.getBuiltinModule?.('fs')
+        const css = fs?.readFileSync('src/index.css', 'utf-8') ?? ''
+        expect(css).toContain('.stream-tx-node.node-compact')
+        expect(css).toContain('.density-mode-segmented')
+        expect(css).toContain('.mempool-space-link')
+        expect(css).toContain('.source-info-btn')
+      })
+    })
   })
 })

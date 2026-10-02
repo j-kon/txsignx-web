@@ -76,6 +76,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchError, setSearchError] = useState('')
   const [viewMode, setViewMode] = useState<'flow' | 'graph'>('flow')
+  const [densityMode, setDensityMode] = useState<'calm' | 'normal' | 'dense'>('normal')
 
   // Selected mempool transaction for preview drawer
   const [selectedTx, setSelectedTx] = useState<LiveTransaction | null>(null)
@@ -198,7 +199,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           setNewTxids((prev) => new Set(prev).add(tx.txid))
           setTransactions((prev) => {
             if (prev.some((t) => t.txid === tx.txid)) return prev
-            return [tx, ...prev].slice(0, 200)
+            return [tx, ...prev].slice(0, 350)
           })
           // Remove new pulse tag after 2.5s
           setTimeout(() => {
@@ -210,6 +211,18 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               })
             }
           }, 2500)
+        }
+        break
+      }
+      case 'transaction_updated': {
+        const updatedTx = event.data
+        if (updatedTx && updatedTx.txid) {
+          setTransactions((prev) =>
+            prev.map((t) => (t.txid === updatedTx.txid ? { ...t, ...updatedTx } : t))
+          )
+          setSelectedTx((prev) =>
+            prev && prev.txid === updatedTx.txid ? { ...prev, ...updatedTx } : prev
+          )
         }
         break
       }
@@ -555,8 +568,23 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedBlock, selectedTx])
 
-  // Animated stream nodes: bounded to 100 most recent transactions
-  const visibleTransactions = useMemo(() => transactions.slice(0, 100), [transactions])
+  const densityLimit = useMemo(() => {
+    switch (densityMode) {
+      case 'calm':
+        return 80
+      case 'dense':
+        return 300
+      case 'normal':
+      default:
+        return 180
+    }
+  }, [densityMode])
+
+  // Animated stream nodes: bounded by densityLimit (80 / 180 / 300)
+  const visibleTransactions = useMemo(
+    () => transactions.slice(0, densityLimit),
+    [transactions, densityLimit]
+  )
   const timeStampedTxs = useMemo(
     () => visibleTransactions.filter(
       (tx) => tx.first_seen_at !== undefined && tx.first_seen_at !== null
@@ -577,9 +605,15 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     )
   }, [timeStampedTxs, nowSeconds])
 
+  const preferredWindow = useMemo(() => {
+    if (timeStampedTxs.length > 100 && maxTxAge <= 30) return 30
+    if (timeStampedTxs.length > 100 && maxTxAge <= 120) return 120
+    return undefined
+  }, [timeStampedTxs.length, maxTxAge])
+
   const adaptiveWindow = useMemo(() => {
-    return getAdaptiveTimeWindow(maxTxAge)
-  }, [maxTxAge])
+    return getAdaptiveTimeWindow(maxTxAge, preferredWindow)
+  }, [maxTxAge, preferredWindow])
 
   const layoutMap = useMemo(() => {
     return computeCollisionFreeLayout(timeStampedTxs, adaptiveWindow.windowSeconds, nowSeconds)
@@ -651,13 +685,13 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         </p>
       </header>
 
-      {/* Unified Integrated Network Status Strip (Section 14) */}
+      {/* Unified Integrated Network Status Strip */}
       <section className="live-status-strip" aria-label="Bitcoin network status">
         <div className="strip-item network-item">
           <span className="live-dot pulse-green" aria-hidden="true" />
           <span className="strip-label">NETWORK</span>
           <span className="strip-value uppercase font-semibold">
-            {snapshot?.network || '—'}
+            {snapshot?.network === 'bitcoin' ? 'Bitcoin Mainnet' : (snapshot?.network || '—')}
           </span>
         </div>
 
@@ -688,7 +722,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               snapshot.mempool !== undefined && snapshot.mempool !== null ? (
                 <>
                   <span>{snapshot.mempool.tx_count.toLocaleString()}</span>
-                  {' txs'}
+                  {' TX'}
                   {snapshot.mempool.size_bytes !== undefined &&
                     snapshot.mempool.size_bytes !== null && (
                       <span className="strip-subval">
@@ -701,7 +735,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 snapshot.mempool_tx_count !== null ? (
                 <>
                   <span>{snapshot.mempool_tx_count.toLocaleString()}</span>
-                  {' txs'}
+                  {' TX'}
                   {snapshot.mempool_size_bytes !== undefined &&
                     snapshot.mempool_size_bytes !== null && (
                       <span className="strip-subval">
@@ -717,6 +751,32 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               '—'
             )}
           </span>
+        </div>
+
+        <div className="strip-divider" aria-hidden="true" />
+
+        <div className="strip-item displaying-item">
+          <span className="strip-label">DISPLAYING</span>
+          <span className="strip-value mono">
+            {visibleTransactions.length} LIVE
+          </span>
+        </div>
+
+        <div className="strip-divider" aria-hidden="true" />
+
+        <div className="strip-item source-item">
+          <span className="strip-label">SOURCE</span>
+          <span className="strip-value uppercase font-semibold">
+            {snapshot?.source_label || (snapshot?.network === 'bitcoin' ? 'Public Mainnet Feed' : 'Bitcoin Core')}
+          </span>
+          <button
+            type="button"
+            className="source-info-btn"
+            title="Live public Bitcoin data is provided through the configured public feed. TxSignX performs its own transaction decoding where raw transaction data is available."
+            aria-label="Source trust info"
+          >
+            ℹ
+          </button>
         </div>
 
         <div className="strip-divider" aria-hidden="true" />
@@ -940,39 +1000,79 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               TxSignX Live Flow
             </h2>
             <span className="live-count-badge">
-              {transactions.length} mempool {transactions.length === 1 ? 'entry' : 'entries'}
+              {visibleTransactions.length} of {transactions.length} mempool {transactions.length === 1 ? 'entry' : 'entries'}
             </span>
           </div>
 
-          {/* Compact Segmented Control (Section 16) */}
-          <div
-            className="view-mode-segmented"
-            role="radiogroup"
-            aria-label="View display mode"
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-label="Live Flow"
-              aria-checked={viewMode === 'flow'}
-              className={`segmented-btn ${viewMode === 'flow' ? 'active' : ''}`}
-              onClick={() => setViewMode('flow')}
+          <div className="flow-controls-group">
+            {/* Density Selector (Section 14) */}
+            <div
+              className="density-mode-segmented"
+              role="radiogroup"
+              aria-label="Stream density"
             >
-              Live Stream
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-label="Transaction Flow Graph"
-              aria-checked={viewMode === 'graph'}
-              className={`segmented-btn ${viewMode === 'graph' ? 'active' : ''}`}
-              onClick={() => setViewMode('graph')}
+              <button
+                type="button"
+                role="radio"
+                aria-label="Calm density limit 80"
+                aria-checked={densityMode === 'calm'}
+                className={`density-btn ${densityMode === 'calm' ? 'active' : ''}`}
+                onClick={() => setDensityMode('calm')}
+              >
+                CALM (80)
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-label="Normal density limit 180"
+                aria-checked={densityMode === 'normal'}
+                className={`density-btn ${densityMode === 'normal' ? 'active' : ''}`}
+                onClick={() => setDensityMode('normal')}
+              >
+                NORMAL (180)
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-label="Dense density limit 300"
+                aria-checked={densityMode === 'dense'}
+                className={`density-btn ${densityMode === 'dense' ? 'active' : ''}`}
+                onClick={() => setDensityMode('dense')}
+              >
+                DENSE (300)
+              </button>
+            </div>
+
+            {/* Compact Segmented Control (Section 16) */}
+            <div
+              className="view-mode-segmented"
+              role="radiogroup"
+              aria-label="View display mode"
             >
-              Dependency Graph
-              {graphLinks.length > 0 && (
-                <span className="segmented-badge">{graphLinks.length}</span>
-              )}
-            </button>
+              <button
+                type="button"
+                role="radio"
+                aria-label="Live Flow"
+                aria-checked={viewMode === 'flow'}
+                className={`segmented-btn ${viewMode === 'flow' ? 'active' : ''}`}
+                onClick={() => setViewMode('flow')}
+              >
+                Live Stream
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-label="Transaction Flow Graph"
+                aria-checked={viewMode === 'graph'}
+                className={`segmented-btn ${viewMode === 'graph' ? 'active' : ''}`}
+                onClick={() => setViewMode('graph')}
+              >
+                Dependency Graph
+                {graphLinks.length > 0 && (
+                  <span className="segmented-badge">{graphLinks.length}</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1073,7 +1173,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               <div className="stream-grid-line line-75" aria-hidden="true" />
               <div className="stream-grid-line line-100" aria-hidden="true" />
 
-              {/* Positioned Transaction Nodes (bounded to 100 max) */}
+              {/* Positioned Transaction Nodes (bounded by densityMode) */}
               {timeStampedTxs.map((tx) => {
                 const layout = layoutMap.get(tx.txid) || {
                   leftPercent: 50,
@@ -1081,11 +1181,14 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                   lane: 0,
                   sizePx: 48,
                   isOverflow: false,
+                  densityTier: 'large' as const,
                 }
                 const isRbf = tx.explicit_rbf === true
                 const hasWitness = tx.has_witness === true
                 const isSelected = selectedTx?.txid === tx.txid
                 const isNew = newTxids.has(tx.txid)
+                const isCompact = layout.densityTier === 'compact'
+                const isMedium = layout.densityTier === 'medium'
 
                 return (
                   <button
@@ -1094,7 +1197,9 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     data-txid={tx.txid}
                     className={`stream-tx-node live-tx-node flow-node ${isRbf ? 'rbf-indicated' : ''} ${
                       isSelected ? 'selected' : ''
-                    } ${isNew ? 'node-enter-now flow-pulse-inbound' : ''}`}
+                    } ${isNew ? 'node-enter-now flow-pulse-inbound' : ''} ${
+                      isCompact ? 'node-compact' : isMedium ? 'node-medium' : 'node-large'
+                    }`}
                     style={{
                       left: `${layout.leftPercent}%`,
                       top: `${layout.topPercent}%`,
@@ -1116,19 +1221,21 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         : 'No fee rate'
                     }`}
                   >
-                    {/* Clean inner orb: only numeric vsize and tiny vB */}
-                    <div className="node-orb-inner">
-                      <span className="node-vsize-num">{tx.vsize}</span>
-                      <span className="node-vsize-unit">vB</span>
-                    </div>
+                    {/* Clean inner orb: only shown for medium and large tiers */}
+                    {!isCompact && (
+                      <div className="node-orb-inner">
+                        <span className="node-vsize-num">{tx.vsize}</span>
+                        {!isMedium && <span className="node-vsize-unit">vB</span>}
+                      </div>
+                    )}
 
-                    {/* Outside badges: W = SegWit, RBF = explicit RBF */}
-                    {hasWitness && (
+                    {/* Outside badges: only in large tier */}
+                    {!isCompact && !isMedium && hasWitness && (
                       <span className="node-segwit-dot" title="SegWit witness data present">
                         W
                       </span>
                     )}
-                    {isRbf && (
+                    {!isCompact && !isMedium && isRbf && (
                       <span className="node-rbf-badge" title="BIP 125 Explicit RBF">
                         RBF
                       </span>
@@ -1137,7 +1244,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     {/* Polished floating tooltip card on hover / focus */}
                     <div
                       className={`node-floating-tooltip ${
-                        layout.lane <= 1 ? 'tooltip-open-down' : 'tooltip-open-up'
+                        layout.lane <= 2 ? 'tooltip-open-down' : 'tooltip-open-up'
                       }`}
                       role="tooltip"
                     >
@@ -1146,6 +1253,8 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         <code className="tooltip-txid-code">{truncateHash(tx.txid, 5, 4)}</code>
                       </div>
                       <div className="tooltip-metrics-row">
+                        <span className="tooltip-age">{formatRelativeTime(tx.first_seen_at)}</span>
+                        <span className="tooltip-sep">·</span>
                         <span className="tooltip-vsize">{tx.vsize} vB</span>
                         <span className="tooltip-sep">·</span>
                         <span className="tooltip-feerate">
@@ -1165,6 +1274,9 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                           <span className="tooltip-tag-rbf">Explicit RBF</span>
                         ) : (
                           <span className="tooltip-tag-neutral">Non-RBF</span>
+                        )}
+                        {tx.hydration_status && (
+                          <span className="tooltip-tag-hydration">{tx.hydration_status}</span>
                         )}
                       </div>
                     </div>
@@ -1776,6 +1888,20 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 >
                   {reportLoading ? 'Loading Explorer Report…' : 'Explore Transaction →'}
                 </button>
+
+                {/* External Source Verification Link (Requirement 21) */}
+                {((snapshot?.network === 'bitcoin' || snapshot?.source === 'public_mainnet' || selectedTx.source === 'public_mainnet') && snapshot?.network !== 'regtest') && (
+                  <div className="drawer-external-link-row">
+                    <a
+                      href={`https://mempool.space/tx/${selectedTx.txid}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mempool-space-link"
+                    >
+                      View source on mempool.space ↗
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           </aside>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { ApiClient } from '../lib/api/client'
 import {
@@ -12,6 +12,7 @@ import {
   liveEventSchema,
 } from '../lib/api/schema'
 import { ReportView } from './ReportView'
+import { getAdaptiveTimeWindow, computeCollisionFreeLayout } from './liveStreamLayout'
 
 interface LiveChainProps {
   api: ApiClient
@@ -37,15 +38,6 @@ function formatUtcTime(timestamp?: number): string {
 function truncateHash(hash: string, start = 8, end = 8): string {
   if (!hash || hash.length <= start + end) return hash
   return `${hash.slice(0, start)}…${hash.slice(-end)}`
-}
-
-function hashCode(str: string): number {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i)
-    hash |= 0
-  }
-  return hash
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -124,6 +116,43 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   const reconnectTimeoutRef = useRef<number | undefined>(undefined)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const triggerElementRef = useRef<HTMLElement | null>(null)
+  const railContainerRef = useRef<HTMLDivElement | null>(null)
+  const tipCardRef = useRef<HTMLButtonElement | null>(null)
+  const initialScrollDoneRef = useRef(false)
+  const userScrolledHistoricalRef = useRef(false)
+  const isAutoScrollingRef = useRef(false)
+
+  const prefersReducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+
+  const scrollToTip = useCallback((smooth = true) => {
+    if (!tipCardRef.current) return
+    isAutoScrollingRef.current = true
+    const behavior = !smooth || prefersReducedMotion ? 'auto' : 'smooth'
+    if (typeof tipCardRef.current.scrollIntoView === 'function') {
+      tipCardRef.current.scrollIntoView({
+        behavior,
+        inline: 'end',
+        block: 'nearest',
+      })
+    }
+    setTimeout(() => {
+      isAutoScrollingRef.current = false
+    }, 50)
+  }, [prefersReducedMotion])
+
+  const handleRailScroll = () => {
+    if (isAutoScrollingRef.current) return
+    const container = railContainerRef.current
+    if (!container) return
+    const maxScrollLeft = container.scrollWidth - container.clientWidth
+    if (container.scrollLeft < maxScrollLeft - 40) {
+      userScrolledHistoricalRef.current = true
+    } else {
+      userScrolledHistoricalRef.current = false
+    }
+  }
 
   // Clock tick timer
   useEffect(() => {
@@ -209,6 +238,12 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           setSnapshot((prev) =>
             prev ? { ...prev, tip_height: block.height, tip_hash: block.hash } : null
           )
+          // Smoothly scroll to new tip if user is not inspecting older blocks
+          if (!userScrolledHistoricalRef.current) {
+            setTimeout(() => {
+              scrollToTip(true)
+            }, 50)
+          }
           // Soft flash for 2.5s on new tip
           setTimeout(() => {
             if (activeRef.current) {
@@ -236,6 +271,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       }
     }
   }
+
+  const handleEventRef = useRef(handleEvent)
+  useEffect(() => {
+    handleEventRef.current = handleEvent
+  })
 
   // Load initial snapshot and maintain WebSocket connection
   useEffect(() => {
@@ -280,7 +320,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             const parsed = JSON.parse(e.data)
             const event = liveEventSchema.parse(parsed)
             if (event) {
-              handleEvent(event)
+              handleEventRef.current(event)
             }
           } catch {
             // safely ignore non-json or malformed payloads
@@ -489,6 +529,17 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   // Tip block is the one with highest height
   const tipBlock = railBlocks.length > 0 ? railBlocks[railBlocks.length - 1] : null
 
+  // Auto-scroll current tip into view on initial block load
+  useEffect(() => {
+    if (railBlocks.length > 0 && !initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true
+      const timer = setTimeout(() => {
+        scrollToTip(false)
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [railBlocks.length, scrollToTip])
+
   // Escape key closes open drawers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -503,6 +554,36 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedBlock, selectedTx])
+
+  // Animated stream nodes: bounded to 100 most recent transactions
+  const visibleTransactions = useMemo(() => transactions.slice(0, 100), [transactions])
+  const timeStampedTxs = useMemo(
+    () => visibleTransactions.filter(
+      (tx) => tx.first_seen_at !== undefined && tx.first_seen_at !== null
+    ),
+    [visibleTransactions]
+  )
+  const unstampedTxs = useMemo(
+    () => visibleTransactions.filter(
+      (tx) => tx.first_seen_at === undefined || tx.first_seen_at === null
+    ),
+    [visibleTransactions]
+  )
+
+  const maxTxAge = useMemo(() => {
+    if (timeStampedTxs.length === 0) return 0
+    return Math.max(
+      ...timeStampedTxs.map((t) => Math.max(0, nowSeconds - (t.first_seen_at ?? nowSeconds)))
+    )
+  }, [timeStampedTxs, nowSeconds])
+
+  const adaptiveWindow = useMemo(() => {
+    return getAdaptiveTimeWindow(maxTxAge)
+  }, [maxTxAge])
+
+  const layoutMap = useMemo(() => {
+    return computeCollisionFreeLayout(timeStampedTxs, adaptiveWindow.windowSeconds, nowSeconds)
+  }, [timeStampedTxs, adaptiveWindow.windowSeconds, nowSeconds])
 
   // If viewing full report, display ReportView with breadcrumb bar
   if (activeReport) {
@@ -556,15 +637,6 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       </div>
     )
   }
-
-  // Animated stream nodes: bounded to 100 most recent transactions
-  const visibleTransactions = transactions.slice(0, 100)
-  const timeStampedTxs = visibleTransactions.filter(
-    (tx) => tx.first_seen_at !== undefined && tx.first_seen_at !== null
-  )
-  const unstampedTxs = visibleTransactions.filter(
-    (tx) => tx.first_seen_at === undefined || tx.first_seen_at === null
-  )
 
   return (
     <div className="live-chain-page">
@@ -778,6 +850,8 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           </div>
         ) : (
           <div
+            ref={railContainerRef}
+            onScroll={handleRailScroll}
             className="chain-rail-container"
             role="region"
             aria-label="Recent blocks connected rail"
@@ -792,6 +866,8 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
 
                 return (
                   <button
+                    ref={isTip ? tipCardRef : undefined}
+                    data-tip={isTip ? 'true' : undefined}
                     type="button"
                     key={block.hash}
                     className={`recent-block-card chain-block-card ${isTip ? 'is-tip-block tip-card' : 'is-historical-block'} ${
@@ -969,15 +1045,27 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           <div className="time-stream-wrapper" role="region" aria-label="Live mempool time stream">
             {/* Time Axis Header */}
             <div className="time-stream-axis" aria-hidden="true">
-              <span className="axis-marker marker-left">60s ago</span>
-              <span className="axis-marker marker-mid-left">45s ago</span>
-              <span className="axis-marker marker-mid">30s ago</span>
-              <span className="axis-marker marker-mid-right">15s ago</span>
-              <span className="axis-marker marker-right">NOW (Live)</span>
+              <span className="axis-marker marker-left">{adaptiveWindow.axisTicks[0]}</span>
+              <span className="axis-marker marker-mid-left">{adaptiveWindow.axisTicks[1]}</span>
+              <span className="axis-marker marker-mid">{adaptiveWindow.axisTicks[2]}</span>
+              <span className="axis-marker marker-mid-right">{adaptiveWindow.axisTicks[3]}</span>
+              <span className="axis-marker marker-right">{adaptiveWindow.axisTicks[4]} (Live)</span>
+            </div>
+
+            {/* Subtle explanation note: vertical position avoids overlap */}
+            <div className="time-stream-helper-bar">
+              <span className="stream-lane-hint">Vertical position is used only to avoid overlap.</span>
             </div>
 
             {/* Time Stream Scene */}
             <div className="time-stream-scene">
+              {/* Subtle horizontal lane guides */}
+              <div className="stream-lane-guide guide-lane-0" aria-hidden="true" />
+              <div className="stream-lane-guide guide-lane-1" aria-hidden="true" />
+              <div className="stream-lane-guide guide-lane-2" aria-hidden="true" />
+              <div className="stream-lane-guide guide-lane-3" aria-hidden="true" />
+              <div className="stream-lane-guide guide-lane-4" aria-hidden="true" />
+
               {/* Subtle vertical time grid lines */}
               <div className="stream-grid-line line-0" aria-hidden="true" />
               <div className="stream-grid-line line-25" aria-hidden="true" />
@@ -987,19 +1075,13 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
 
               {/* Positioned Transaction Nodes (bounded to 100 max) */}
               {timeStampedTxs.map((tx) => {
-                const firstSeen = tx.first_seen_at!
-                const ageSeconds = Math.max(0, nowSeconds - firstSeen)
-                // Map 0..60s to 94%..4% (NOW at right, 60s ago at left)
-                const progress = Math.min(1, ageSeconds / 60)
-                const leftPercent = (1 - progress) * 88 + 4
-
-                // Deterministic 4 vertical lanes based on txid hash
-                const lane = Math.abs(hashCode(tx.txid)) % 4
-                const laneTopPercent = 14 + lane * 22
-
-                // Size derived from vsize (clamped between 34px and 58px)
-                const sizePx = Math.min(58, Math.max(34, 34 + Math.round((tx.vsize / 500) * 24)))
-
+                const layout = layoutMap.get(tx.txid) || {
+                  leftPercent: 50,
+                  topPercent: 50,
+                  lane: 0,
+                  sizePx: 48,
+                  isOverflow: false,
+                }
                 const isRbf = tx.explicit_rbf === true
                 const hasWitness = tx.has_witness === true
                 const isSelected = selectedTx?.txid === tx.txid
@@ -1014,10 +1096,10 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                       isSelected ? 'selected' : ''
                     } ${isNew ? 'node-enter-now flow-pulse-inbound' : ''}`}
                     style={{
-                      left: `${leftPercent}%`,
-                      top: `${laneTopPercent}%`,
-                      width: `${sizePx}px`,
-                      height: `${sizePx}px`,
+                      left: `${layout.leftPercent}%`,
+                      top: `${layout.topPercent}%`,
+                      width: `${layout.sizePx}px`,
+                      height: `${layout.sizePx}px`,
                     }}
                     onClick={() => {
                       triggerElementRef.current = document.activeElement as HTMLElement
@@ -1034,19 +1116,58 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         : 'No fee rate'
                     }`}
                   >
-                    <div className="node-content">
-                      <span className="node-txid-tiny">
-                        <code>{truncateHash(tx.txid, 5, 4)}</code>
-                      </span>
-                      <span className="node-vsize">{tx.vsize} vB</span>
-                      {tx.fee_rate !== undefined && tx.fee_rate !== null && (
-                        <span className="node-feerate">
-                          {tx.fee_rate.toFixed(1)} s/vB
-                        </span>
-                      )}
+                    {/* Clean inner orb: only numeric vsize and tiny vB */}
+                    <div className="node-orb-inner">
+                      <span className="node-vsize-num">{tx.vsize}</span>
+                      <span className="node-vsize-unit">vB</span>
                     </div>
-                    {hasWitness && <span className="node-segwit-dot" title="SegWit witness data present">W</span>}
-                    {isRbf && <span className="node-rbf-badge" title="BIP 125 Explicit RBF">RBF</span>}
+
+                    {/* Outside badges: W = SegWit, RBF = explicit RBF */}
+                    {hasWitness && (
+                      <span className="node-segwit-dot" title="SegWit witness data present">
+                        W
+                      </span>
+                    )}
+                    {isRbf && (
+                      <span className="node-rbf-badge" title="BIP 125 Explicit RBF">
+                        RBF
+                      </span>
+                    )}
+
+                    {/* Polished floating tooltip card on hover / focus */}
+                    <div
+                      className={`node-floating-tooltip ${
+                        layout.lane <= 1 ? 'tooltip-open-down' : 'tooltip-open-up'
+                      }`}
+                      role="tooltip"
+                    >
+                      <div className="tooltip-txid-row">
+                        <span className="tooltip-label">TXID:</span>{' '}
+                        <code className="tooltip-txid-code">{truncateHash(tx.txid, 5, 4)}</code>
+                      </div>
+                      <div className="tooltip-metrics-row">
+                        <span className="tooltip-vsize">{tx.vsize} vB</span>
+                        <span className="tooltip-sep">·</span>
+                        <span className="tooltip-feerate">
+                          {tx.fee_rate !== undefined && tx.fee_rate !== null
+                            ? `${tx.fee_rate.toFixed(1)} sat/vB`
+                            : '—'}
+                        </span>
+                        <span className="sr-only">
+                          {tx.fee_rate !== undefined && tx.fee_rate !== null
+                            ? `${tx.fee_rate.toFixed(1)} s/vB`
+                            : ''}
+                        </span>
+                      </div>
+                      <div className="tooltip-tags-row">
+                        {hasWitness && <span className="tooltip-tag-segwit">SegWit</span>}
+                        {isRbf ? (
+                          <span className="tooltip-tag-rbf">Explicit RBF</span>
+                        ) : (
+                          <span className="tooltip-tag-neutral">Non-RBF</span>
+                        )}
+                      </div>
+                    </div>
                   </button>
                 )
               })}

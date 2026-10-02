@@ -7,7 +7,13 @@ import {LiveChain} from './features/LiveChain'
 import {Policies} from './features/Policies'
 
 function App(){
-  const [page,setPage]=useState(()=>window.location.hash)
+  const [page,setPage]=useState(()=>{
+    const hash = window.location.hash
+    if (hash === '' || hash === '#home') {
+      return '#live'
+    }
+    return hash
+  })
   const [connection]=useState(()=>{
     try{
       return {api:new ApiClient(),error:''}
@@ -20,9 +26,18 @@ function App(){
   })
 
   useEffect(()=>{
-    const change=()=>setPage(window.location.hash)
-    window.addEventListener('hashchange',change)
-    return ()=>window.removeEventListener('hashchange',change)
+    const normalize=()=>{
+      const hash = window.location.hash
+      if (hash === '' || hash === '#home') {
+        window.history.replaceState(null, '', '#live')
+        setPage('#live')
+      } else {
+        setPage(hash)
+      }
+    }
+    normalize()
+    window.addEventListener('hashchange',normalize)
+    return ()=>window.removeEventListener('hashchange',normalize)
   },[])
 
   return (

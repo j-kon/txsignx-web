@@ -19,7 +19,7 @@ export function Header({page}:HeaderProps){
   return (
     <header className={`site-header ${scrolled?'scrolled':''}`}>
       <div className="header-inner">
-        <a className="wordmark" href="#home" aria-label="TxSignX Home">
+        <a className="wordmark" href="#live" aria-label="TxSignX Live Chain">
           <span className="wordmark-icon" aria-hidden="true">
             <svg viewBox="0 0 32 32" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
               <polygon points="16,3 29,10.5 29,21.5 16,29 3,21.5 3,10.5" stroke="#243041" strokeWidth="2" fill="#111827"/>

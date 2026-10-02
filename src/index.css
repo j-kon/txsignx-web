@@ -3693,9 +3693,11 @@ th {
 /* Horizontal Chain Rail */
 .chain-rail-container {
   position: relative;
-  padding: 0.75rem 0.25rem 1rem;
+  padding: 0.75rem 1.5rem 1rem 0.25rem;
   overflow-x: auto;
   scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 1.5rem;
 }
 
 .chain-rail-connector-line {
@@ -3722,6 +3724,7 @@ th {
   position: relative;
   z-index: 1;
   min-width: min-content;
+  padding-right: 1.5rem;
 }
 
 /* Individual Recent Block Card (as interactive button) */
@@ -3739,6 +3742,7 @@ th {
   cursor: pointer;
   font-family: inherit;
   color: inherit;
+  scroll-snap-align: start;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
     border-color 0.2s ease,
     box-shadow 0.2s ease;
@@ -3760,6 +3764,7 @@ th {
 
 /* Tip Block Distinct Styling */
 .recent-block-card.is-tip-block {
+  scroll-snap-align: end;
   border-color: rgba(247, 147, 26, 0.55);
   background: linear-gradient(
     145deg,
@@ -4078,9 +4083,25 @@ th {
   font-weight: 700;
 }
 
+/* Time Stream Helper Bar */
+.time-stream-helper-bar {
+  padding: 0.3rem 1rem;
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.stream-lane-hint {
+  font-size: 0.7rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
 .time-stream-scene {
   position: relative;
-  height: 290px;
+  height: 320px;
   overflow: hidden;
   background: radial-gradient(
     ellipse 80% 60% at 85% 50%,
@@ -4088,6 +4109,22 @@ th {
     transparent 100%
   );
 }
+
+/* Subtle horizontal lane guide lines */
+.stream-lane-guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(59, 130, 246, 0.04);
+  pointer-events: none;
+}
+
+.stream-lane-guide.guide-lane-0 { top: 10%; }
+.stream-lane-guide.guide-lane-1 { top: 26%; }
+.stream-lane-guide.guide-lane-2 { top: 42%; }
+.stream-lane-guide.guide-lane-3 { top: 58%; }
+.stream-lane-guide.guide-lane-4 { top: 74%; }
 
 /* Subtle vertical grid lines marking time intervals */
 .stream-grid-line {
@@ -4120,8 +4157,8 @@ th {
 .stream-tx-node {
   position: absolute;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle at 30% 30%, #1e293b 0%, #0f172a 100%);
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: radial-gradient(circle at 35% 35%, #1e293b 0%, #0f172a 100%);
+  border: 1px solid rgba(59, 130, 246, 0.4);
   border-radius: 50%;
   display: flex;
   flex-direction: column;
@@ -4129,22 +4166,26 @@ th {
   justify-content: center;
   cursor: pointer;
   padding: 0;
-  transition: left 1s linear, transform 0.2s ease, box-shadow 0.2s ease,
+  transition: left 1s cubic-bezier(0.25, 1, 0.5, 1),
+    top 0.4s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
     border-color 0.2s ease;
   z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 }
 
 .stream-tx-node:hover {
-  transform: translate(-50%, -50%) scale(1.18);
-  z-index: 25;
+  transform: translate(-50%, -50%) scale(1.14);
+  z-index: 40;
   border-color: #60a5fa;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), 0 0 14px rgba(59, 130, 246, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 16px rgba(59, 130, 246, 0.45);
 }
 
 .stream-tx-node:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.6);
+  z-index: 40;
 }
 
 .stream-tx-node.rbf-indicated {
@@ -4177,28 +4218,34 @@ th {
   }
 }
 
-.node-content {
+/* Inner Clean Orb: size represents vsize, subtle center number + tiny vB */
+.node-orb-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  line-height: 1.1;
   pointer-events: none;
+  line-height: 1;
+  gap: 2px;
 }
 
-.node-txid-tiny {
-  font-size: 0.62rem;
+.node-vsize-num {
+  font-size: 0.82rem;
   font-family: monospace;
-  font-weight: 700;
+  font-weight: 800;
   color: #edf2f8;
+  letter-spacing: -0.02em;
 }
 
-.node-feerate-tiny {
-  font-size: 0.58rem;
-  color: #93c5fd;
-  font-family: monospace;
+.node-vsize-unit {
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
+/* Outside Badges */
 .node-segwit-dot {
   position: absolute;
   top: -3px;
@@ -4224,6 +4271,131 @@ th {
   padding: 0 3px;
   border-radius: 2px;
   line-height: 1.1;
+}
+
+/* Polished Floating Hover/Focus Tooltip Card */
+.node-floating-tooltip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.7), 0 0 16px rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+  padding: 0.55rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 100;
+  min-width: 175px;
+  text-align: left;
+}
+
+.node-floating-tooltip.tooltip-open-up {
+  bottom: calc(100% + 10px);
+}
+
+.node-floating-tooltip.tooltip-open-down {
+  top: calc(100% + 10px);
+}
+
+.stream-tx-node:hover .node-floating-tooltip,
+.stream-tx-node:focus-visible .node-floating-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tooltip-txid-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+}
+
+.tooltip-label {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.tooltip-txid-code {
+  color: #60a5fa;
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 0.74rem;
+}
+
+.tooltip-metrics-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-family: monospace;
+}
+
+.tooltip-vsize {
+  color: #edf2f8;
+  font-weight: 600;
+}
+
+.tooltip-sep {
+  color: var(--muted);
+}
+
+.tooltip-feerate {
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.tooltip-tags-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 2px;
+}
+
+.tooltip-tag-segwit {
+  background: rgba(37, 99, 235, 0.25);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.tooltip-tag-rbf {
+  background: rgba(247, 147, 26, 0.2);
+  border: 1px solid rgba(247, 147, 26, 0.4);
+  color: #f7931a;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.tooltip-tag-neutral {
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-tx-node {
+    transition: none !important;
+    animation: none !important;
+  }
+  .chain-rail-container {
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Unstamped Fallback Lane (Section 10) */

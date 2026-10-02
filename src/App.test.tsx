@@ -12,6 +12,7 @@ import policies from './test/fixtures/policies.json'
 import txidConfirmed from './test/fixtures/txid_confirmed.json'
 import txidMempool from './test/fixtures/txid_mempool.json'
 import rawWithAddresses from './test/fixtures/raw_with_addresses.json'
+import { getAdaptiveTimeWindow, computeCollisionFreeLayout } from './features/liveStreamLayout'
 
 const caps={
   raw_transaction_inspection:true,
@@ -1392,6 +1393,246 @@ describe('Live Chain Observability Interface', () => {
       // Confirm missing facts render "—"
       const dashes = screen.getAllByText('—')
       expect(dashes.length).toBeGreaterThanOrEqual(3)
+    })
+
+    describe('Live Chain visual stabilization & regression fixes', () => {
+      it('transaction age 20 sec appears near NOW', () => {
+        const now = 1700000100
+        const tx = {
+          txid: 'aaaa111122223333444455556666777788889999aaaabbbbccccddddeeeeffff',
+          vsize: 140,
+          weight: 560,
+          first_seen_at: now - 20,
+        }
+        const timeWin = getAdaptiveTimeWindow(20)
+        expect(timeWin.windowSeconds).toBe(60)
+        const layout = computeCollisionFreeLayout([tx as any], timeWin.windowSeconds, now)
+        const placed = layout.get(tx.txid)
+        expect(placed).toBeDefined()
+        // In 6%..92% coordinate system, age 20s progress is 0.33, placing leftPercent around 63.3% (> 55%)
+        expect(placed!.leftPercent).toBeGreaterThan(55)
+        expect(placed!.leftPercent).toBeLessThanOrEqual(92)
+      })
+
+      it('transaction age 90 sec does NOT clamp into another 90-sec tx', () => {
+        const now = 1700000500
+        const txA = {
+          txid: '1111111111111111111111111111111111111111111111111111111111111111',
+          vsize: 140,
+          weight: 560,
+          first_seen_at: now - 90,
+        }
+        const txB = {
+          txid: '2222222222222222222222222222222222222222222222222222222222222222',
+          vsize: 140,
+          weight: 560,
+          first_seen_at: now - 90,
+        }
+        // Adaptive window expands to 300s (5m) instead of clamping to 60s
+        const timeWin = getAdaptiveTimeWindow(90)
+        expect(timeWin.windowSeconds).toBe(300)
+        const layout = computeCollisionFreeLayout([txA as any, txB as any], timeWin.windowSeconds, now)
+        const placedA = layout.get(txA.txid)!
+        const placedB = layout.get(txB.txid)!
+        // Neither is clamped to the left boundary
+        expect(placedA.leftPercent).toBeGreaterThan(50)
+        expect(placedB.leftPercent).toBeGreaterThan(50)
+        // Deterministic collision avoidance places them in distinct vertical lanes
+        expect(placedA.lane).not.toBe(placedB.lane)
+        expect(placedA.topPercent).not.toBe(placedB.topPercent)
+      })
+
+      it('transactions older than 60 sec remain individually visible', () => {
+        const now = 1700001000
+        const txs = [
+          { txid: '1111111111111111111111111111111111111111111111111111111111111111', vsize: 140, first_seen_at: now - 80 },
+          { txid: '2222222222222222222222222222222222222222222222222222222222222222', vsize: 140, first_seen_at: now - 150 },
+          { txid: '3333333333333333333333333333333333333333333333333333333333333333', vsize: 140, first_seen_at: now - 220 },
+        ]
+        const timeWin = getAdaptiveTimeWindow(220)
+        expect(timeWin.windowSeconds).toBe(300)
+        const layout = computeCollisionFreeLayout(txs as any, timeWin.windowSeconds, now)
+        const positions = txs.map((t) => layout.get(t.txid)!)
+        // Monotonic recency ordering: newest has highest leftPercent, oldest has lowest
+        expect(positions[0].leftPercent).toBeGreaterThan(positions[1].leftPercent)
+        expect(positions[1].leftPercent).toBeGreaterThan(positions[2].leftPercent)
+        // Oldest is still well within visible area, not clamped to 4%
+        expect(positions[2].leftPercent).toBeGreaterThan(15)
+      })
+
+      it('two transactions with same first_seen_at do not overlap', () => {
+        const now = 1700000050
+        const tx1 = { txid: 'aaaa111111111111111111111111111111111111111111111111111111111111', vsize: 140, first_seen_at: now - 15 }
+        const tx2 = { txid: 'bbbb222222222222222222222222222222222222222222222222222222222222', vsize: 140, first_seen_at: now - 15 }
+        const layout = computeCollisionFreeLayout([tx1 as any, tx2 as any], 60, now)
+        const p1 = layout.get(tx1.txid)!
+        const p2 = layout.get(tx2.txid)!
+        expect(Math.abs(p1.topPercent - p2.topPercent)).toBeGreaterThanOrEqual(16)
+      })
+
+      it('five same-age transactions allocate separate lanes/overflow safely', () => {
+        const now = 1700000050
+        const txs = [1, 2, 3, 4, 5].map((i) => ({
+          txid: `${i}`.repeat(64),
+          vsize: 140,
+          first_seen_at: now - 20,
+        }))
+        const layout = computeCollisionFreeLayout(txs as any, 60, now)
+        const lanes = txs.map((t) => layout.get(t.txid)!.lane)
+        const uniqueLanes = new Set(lanes)
+        expect(uniqueLanes.size).toBe(5)
+      })
+
+      it('transaction node text does not contain oversized multi-line content', async () => {
+        window.location.hash = ''
+        render(<App />)
+        const node = await screen.findByText('7b055…1101')
+        const button = node.closest('.stream-tx-node') as HTMLElement
+        expect(button).toBeTruthy()
+        const innerOrb = button.querySelector('.node-orb-inner')
+        expect(innerOrb).toBeTruthy()
+        // Inner orb contains ONLY numeric vsize + vB
+        expect(innerOrb?.textContent?.trim()).toMatch(/^\d+\s*vB$/)
+      })
+
+      it('tooltip contains TXID/vsize/fee rate', async () => {
+        window.location.hash = ''
+        render(<App />)
+        const node = await screen.findByText('7b055…1101')
+        const button = node.closest('.stream-tx-node') as HTMLElement
+        expect(button).toBeTruthy()
+        const tooltip = button.querySelector('.node-floating-tooltip')
+        expect(tooltip).toBeTruthy()
+        expect(tooltip?.textContent).toContain('TXID:')
+        expect(tooltip?.textContent).toContain('7b055…1101')
+        expect(tooltip?.textContent).toContain('140 vB')
+        expect(tooltip?.textContent).toContain('sat/vB')
+      })
+
+      it('current tip is targeted for initial scroll', async () => {
+        const scrollMock = vi.fn()
+        Element.prototype.scrollIntoView = scrollMock
+        window.location.hash = ''
+        render(<App />)
+        const tipCard = await screen.findByRole('button', { name: /Explore block #101/i })
+        await waitFor(() => {
+          expect(scrollMock).toHaveBeenCalled()
+        })
+        expect(tipCard.getAttribute('data-tip')).toBe('true')
+        expect(scrollMock.mock.instances).toContain(tipCard)
+      })
+
+      it('block_connected targets new tip', async () => {
+        const scrollMock = vi.fn()
+        Element.prototype.scrollIntoView = scrollMock
+        window.location.hash = ''
+        render(<App />)
+        await screen.findByRole('button', { name: /Explore block #101/i })
+        scrollMock.mockClear()
+
+        const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+        ws.emit({
+          type: 'block_connected',
+          data: {
+            height: 102,
+            hash: '000000000039d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce271',
+            tx_count: 8,
+            weight: 6000,
+            size: 2000,
+            timestamp: 1700000600,
+          },
+        })
+
+        const newTipCard = await screen.findByRole('button', { name: /Explore block #102/i })
+        await waitFor(() => {
+          expect(scrollMock).toHaveBeenCalled()
+        })
+        expect(newTipCard.getAttribute('data-tip')).toBe('true')
+      })
+
+      it('manual historical scroll is not repeatedly overridden', async () => {
+        const scrollMock = vi.fn()
+        Element.prototype.scrollIntoView = scrollMock
+        window.location.hash = ''
+        const { container } = render(<App />)
+        await screen.findByRole('button', { name: /Explore block #101/i })
+        await waitFor(() => expect(scrollMock).toHaveBeenCalled())
+        scrollMock.mockClear()
+
+        // Wait for initial auto-scroll flag to reset
+        await new Promise((r) => setTimeout(r, 70))
+
+        const rail = container.querySelector('.chain-rail-container') as HTMLElement
+        expect(rail).toBeTruthy()
+
+        // Simulate user scrolling left into historical view
+        Object.defineProperty(rail, 'scrollWidth', { value: 1200, configurable: true })
+        Object.defineProperty(rail, 'clientWidth', { value: 600, configurable: true })
+        Object.defineProperty(rail, 'scrollLeft', { value: 100, configurable: true })
+        fireEvent.scroll(rail)
+
+        const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+        ws.emit({
+          type: 'block_connected',
+          data: {
+            height: 103,
+            hash: '000000000049d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce272',
+            tx_count: 2,
+            weight: 1500,
+            size: 500,
+            timestamp: 1700001200,
+          },
+        })
+
+        await screen.findByRole('button', { name: /Explore block #103/i })
+        await new Promise((r) => setTimeout(r, 100))
+        expect(scrollMock).not.toHaveBeenCalled()
+      })
+
+      it('reduced-motion auto-scroll uses non-animated behavior', async () => {
+        const scrollMock = vi.fn()
+        Element.prototype.scrollIntoView = scrollMock
+
+        const originalMatchMedia = window.matchMedia
+        window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+          matches: query.includes('prefers-reduced-motion'),
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }))
+
+        window.location.hash = ''
+        render(<App />)
+        await screen.findByRole('button', { name: /Explore block #101/i })
+
+        await waitFor(() => {
+          expect(scrollMock).toHaveBeenCalled()
+        })
+
+        const callArgs = scrollMock.mock.calls[0][0]
+        expect(callArgs.behavior).toBe('auto')
+
+        window.matchMedia = originalMatchMedia
+      })
+
+      it('Live Chain route/hash is consistent and normalizes #home to #live', async () => {
+        window.location.hash = '#home'
+        render(<App />)
+
+        expect(window.location.hash).toBe('#live')
+        expect(await screen.findByRole('heading', { name: 'Live Bitcoin Chain & Mempool' })).toBeTruthy()
+
+        const wordmark = screen.getByLabelText('TxSignX Live Chain')
+        expect(wordmark.getAttribute('href')).toBe('#live')
+
+        const liveNav = screen.getByRole('link', { name: 'Live Chain' })
+        expect(liveNav.getAttribute('aria-current')).toBe('page')
+        expect(liveNav.getAttribute('href')).toBe('#live')
+      })
     })
   })
 })

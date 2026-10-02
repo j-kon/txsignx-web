@@ -3317,7 +3317,7 @@ th {
 
 /* Background Atmosphere Layer (Section 13) */
 .live-ambient-atmosphere {
-  position: absolute;
+  position: absolute !important;
   top: -60px;
   left: 50%;
   transform: translateX(-50%);
@@ -3340,7 +3340,7 @@ th {
 }
 
 .live-grid-overlay {
-  position: absolute;
+  position: absolute !important;
   top: 0;
   left: 0;
   right: 0;
@@ -3353,7 +3353,7 @@ th {
   opacity: 0.6;
 }
 
-.live-chain-page > * {
+.live-chain-page > :not(.live-ambient-atmosphere):not(.live-grid-overlay) {
   position: relative;
   z-index: 1;
 }

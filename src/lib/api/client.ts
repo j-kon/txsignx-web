@@ -1,5 +1,5 @@
-import { capabilitiesSchema, catalogSchema, malformed, preflightSchema, psbtSchema, transactionSchema } from './schema'
-import type { Schema } from './schema'
+import { array, blockDetailsSchema, capabilitiesSchema, catalogSchema, liveSnapshotSchema, malformed, mempoolSummarySchema, preflightSchema, psbtSchema, recentBlockSchema, transactionSchema } from './schema'
+import type { BlockDetails, Schema } from './schema'
 export const MAX_TEXT_BYTES = 1024 * 1024
 export const MAX_BODY_BYTES = 2 * MAX_TEXT_BYTES
 export const MAX_OUTPUT_BYTES = 8 * MAX_TEXT_BYTES
@@ -15,6 +15,8 @@ const messages: Record<string,string> = {
   invalid_wallet:'Wallet context was rejected. Check public descriptors, network and derivation window.', invalid_policy:'Policy thresholds were rejected.',
   node_unavailable:'The configured node is unavailable. Check the local API configuration.', node_not_configured:'TXID lookup requires a Bitcoin Core node configured on the TxSignX API.',
   invalid_context:'The supplied context is invalid. Check wallet and node settings.', timeout:'Analysis timed out. Reduce the input or try again.', busy:'The API is busy. Try again shortly.',
+  invalid_block_hash:'The supplied block hash is invalid. Enter a 64-character hexadecimal block hash.',
+  block_not_found:'Block not found. Check the block hash or height and try again.',
 }
 export const textBytes = (text:string) => new TextEncoder().encode(text).byteLength
 export function validateText(text:string) {
@@ -87,4 +89,27 @@ export class ApiClient {
   }
   async inspectPsbt(psbt:string) {validateText(psbt);return this.request('psbt/inspect',psbtSchema,{psbt})}
   async preflight(request:PreflightRequest) {validateText(request.psbt);return this.request('psbt/preflight',preflightSchema,request)}
+  async liveSnapshot() {return this.request('live/snapshot',liveSnapshotSchema)}
+  async recentBlocks() {return this.request('blocks/recent',array(recentBlockSchema))}
+  async blockDetails(hash: string, offset?: number, limit?: number): Promise<BlockDetails> {
+    const params = new URLSearchParams()
+    if (offset !== undefined) params.set('offset', String(offset))
+    if (limit !== undefined) params.set('limit', String(limit))
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return this.request(`blocks/${encodeURIComponent(hash.trim())}${query}`, blockDetailsSchema)
+  }
+  async blockDetailsByHeight(height: number, offset?: number, limit?: number): Promise<BlockDetails> {
+    const params = new URLSearchParams()
+    if (offset !== undefined) params.set('offset', String(offset))
+    if (limit !== undefined) params.set('limit', String(limit))
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return this.request(`blocks/height/${height}${query}`, blockDetailsSchema)
+  }
+  async mempoolSummary() {return this.request('mempool/summary',mempoolSummarySchema)}
+  liveStreamUrl(): string {
+    const wsUrl = new URL(this.baseUrl)
+    wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    wsUrl.pathname = '/api/v1/live/stream'
+    return wsUrl.href
+  }
 }

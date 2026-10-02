@@ -201,9 +201,80 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
         </header>
       )}
 
+      {/* Transaction Overview Section (when inspecting transactions) */}
+      {isTransaction && (
+        <section className="report-section transaction-overview-section" aria-label="Transaction Overview">
+          <div className="section-header-row">
+            <h3>Transaction Overview</h3>
+            <div className="overview-badges">
+              <span className={`status-pill ${inspection.has_witness ? 'pill-segwit' : 'pill-legacy'}`}>
+                SegWit: {inspection.has_witness ? 'Yes' : 'No'}
+              </span>
+              <span className={`status-pill ${inspection.explicit_rbf ? 'pill-rbf' : 'pill-no-rbf'}`}>
+                Explicit RBF: {inspection.explicit_rbf ? 'Yes' : 'No'}
+              </span>
+            </div>
+          </div>
+
+          <div className="overview-grid">
+            <div className="overview-card txid-card">
+              <span className="card-label">Transaction ID</span>
+              <code className="hash-value card-value select-all">{inspection.txid}</code>
+            </div>
+            <div className="overview-card wtxid-card">
+              <span className="card-label">wTXID</span>
+              <code className="hash-value card-value select-all">{inspection.wtxid}</code>
+            </div>
+          </div>
+
+          <div className="overview-stats-grid">
+            <div className="stat-card">
+              <span className="stat-label">Version</span>
+              <strong className="stat-value">{inspection.version}</strong>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">Locktime</span>
+              <strong className="stat-value">{inspection.locktime}</strong>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">Inputs</span>
+              <strong className="stat-value">{inspection.input_count}</strong>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">Outputs</span>
+              <strong className="stat-value">{inspection.output_count}</strong>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">SegWit</span>
+              <strong className={`stat-value ${inspection.has_witness ? 'highlight-segwit' : ''}`}>
+                {inspection.has_witness ? 'Yes' : 'No'}
+              </strong>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">Explicit RBF</span>
+              <strong className="stat-value">
+                {inspection.explicit_rbf ? 'Yes' : 'No'}
+              </strong>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">Size</span>
+              <strong className="stat-value">{inspection.size_bytes} bytes</strong>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">Weight</span>
+              <strong className="stat-value">{inspection.weight_wu} WU</strong>
+            </div>
+            <div className="stat-card">
+              <span className="stat-label">Virtual Size</span>
+              <strong className="stat-value">{inspection.vsize_vb} vB</strong>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Chain Context Section (when present from node lookup) */}
       {'chain_context' in inspection && inspection.chain_context && (
-        <section className="report-section chain-context-section">
+        <section className="report-section chain-context-section" aria-label="Chain Context">
           <h3>Chain Context</h3>
           <div className={`chain-context-card status-${inspection.chain_context.status}`}>
             <div className="chain-context-header">
@@ -234,88 +305,111 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
         </section>
       )}
 
-      {/* Transaction Facts Section */}
-      <section className="report-section">
-        <h3>Transaction facts</h3>
-        <p className="muted">
-          {psbt
-            ? 'Signing state describes field presence, not verified signatures. UTXO consistency checks supplied metadata.'
-            : 'chain_context' in inspection && inspection.chain_context
-            ? 'Transaction verified against Bitcoin Core node. Prevout values and chain status are resolved.'
-            : 'Raw transactions do not provide spent-output values, fees or a network unless resolved or specified.'}
-        </p>
+      {/* Fee & Size Metrics Section (when inspecting transactions) */}
+      {isTransaction && (
+        <section className="report-section fee-metrics-section" aria-label="Fee & Size Metrics">
+          <h3>Fee & Size Metrics</h3>
+          <p className="muted">
+            {'chain_context' in inspection && inspection.chain_context
+              ? 'Transaction verified against Bitcoin Core node. Prevout values and chain status are resolved.'
+              : 'Raw transactions do not provide spent-output values, fees or a network unless resolved or specified.'}
+          </p>
 
-        <dl className="summary-facts">
-          <div className="txid">
-            <dt>{psbt?'Unsigned transaction ID':'Transaction ID'}</dt>
-            <dd className="hash-value">{psbt?psbt.unsigned_txid:'txid' in inspection?inspection.txid:''}</dd>
+          <div className="metrics-grid">
+            <div className="metric-box">
+              <span className="metric-box-label">Size</span>
+              <strong className="metric-box-val">{inspection.size_bytes} bytes</strong>
+            </div>
+            <div className="metric-box">
+              <span className="metric-box-label">Weight</span>
+              <strong className="metric-box-val">{inspection.weight_wu} WU</strong>
+            </div>
+            <div className="metric-box">
+              <span className="metric-box-label">Virtual Size</span>
+              <strong className="metric-box-val">{inspection.vsize_vb} vB</strong>
+            </div>
+            <div className="metric-box">
+              <span className="metric-box-label">Input total</span>
+              <strong className="metric-box-val">
+                {inspection.total_input_sats != null ? `${inspection.total_input_sats.toLocaleString()} sats` : 'Unavailable'}
+              </strong>
+            </div>
+            <div className="metric-box">
+              <span className="metric-box-label">Output total</span>
+              <strong className="metric-box-val">
+                {`${inspection.total_output_sats.toLocaleString()} sats`}
+              </strong>
+            </div>
+            <div className="metric-box">
+              <span className="metric-box-label">Fee (sats)</span>
+              <strong className="metric-box-val">
+                {inspection.fee_sats != null ? `${inspection.fee_sats.toLocaleString()} sats` : 'Unavailable'}
+              </strong>
+            </div>
+            <div className="metric-box">
+              <span className="metric-box-label">Fee rate</span>
+              <strong className="metric-box-val">
+                {inspection.fee_rate ? `${inspection.fee_rate.sat_per_vb} sat/vB` : 'Unavailable'}
+              </strong>
+            </div>
           </div>
-          {psbt?(
-            <>
-              <div>
-                <dt>Signing state</dt>
-                <dd>{humanize(psbt.signing_state)}</dd>
-              </div>
-              <div>
-                <dt>Fee status</dt>
-                <dd>{humanize(psbt.fee.status)}</dd>
-              </div>
-              <div>
-                <dt>Fee (sats)</dt>
-                <dd>{display(psbt.fee.fee_sats)}</dd>
-              </div>
-            </>
-          ):(
-            <>
-              <div>
-                <dt>Version</dt>
-                <dd>{'version' in inspection ? inspection.version : 'Unavailable'}</dd>
-              </div>
-              <div>
-                <dt>Locktime</dt>
-                <dd>{'locktime' in inspection ? inspection.locktime : 'Unavailable'}</dd>
-              </div>
-              <div>
-                <dt>Virtual size</dt>
-                <dd>{'vsize_vb' in inspection ? `${inspection.vsize_vb} vB (${inspection.size_bytes} B)` : 'Unavailable'}</dd>
-              </div>
-              <div>
-                <dt>Weight</dt>
-                <dd>{'weight_wu' in inspection ? `${inspection.weight_wu} WU` : 'Unavailable'}</dd>
-              </div>
-              <div>
-                <dt>Input total</dt>
-                <dd>{'total_input_sats' in inspection && inspection.total_input_sats != null ? `${inspection.total_input_sats.toLocaleString()} sats` : 'Unavailable'}</dd>
-              </div>
-              <div>
-                <dt>Output total</dt>
-                <dd>{`${inspection.total_output_sats.toLocaleString()} sats`}</dd>
-              </div>
-              <div>
-                <dt>Fee (sats)</dt>
-                <dd>{'fee_sats' in inspection && inspection.fee_sats != null ? `${inspection.fee_sats.toLocaleString()} sats` : 'Unavailable'}</dd>
-              </div>
-              <div>
-                <dt>Fee rate</dt>
-                <dd>{'fee_rate' in inspection && inspection.fee_rate ? `${inspection.fee_rate.sat_per_vb} sat/vB` : 'Unavailable'}</dd>
-              </div>
-            </>
+
+          {inspection.fee_sats === null && (
+            <div className="explorer-notice-banner fee-notice" role="note">
+              <span className="notice-icon" aria-hidden="true">ℹ</span>
+              <span>Fee unavailable without resolved previous outputs.</span>
+            </div>
           )}
-          <div>
-            <dt>Inputs</dt>
-            <dd>{inspection.input_count}</dd>
-          </div>
-          <div>
-            <dt>Outputs</dt>
-            <dd>{inspection.output_count}</dd>
-          </div>
-          <div>
-            <dt>Explicit RBF signal</dt>
-            <dd>{display(inspection.explicit_rbf)}</dd>
-          </div>
-        </dl>
+        </section>
+      )}
 
-        <h4>Inputs</h4>
+      {/* PSBT Summary Facts Section */}
+      {!isTransaction && psbt && (
+        <section className="report-section">
+          <h3>Transaction facts</h3>
+          <p className="muted">
+            Signing state describes field presence, not verified signatures. UTXO consistency checks supplied metadata.
+          </p>
+
+          <dl className="summary-facts">
+            <div className="txid">
+              <dt>Unsigned transaction ID</dt>
+              <dd className="hash-value">{psbt.unsigned_txid}</dd>
+            </div>
+            <div>
+              <dt>Signing state</dt>
+              <dd>{humanize(psbt.signing_state)}</dd>
+            </div>
+            <div>
+              <dt>Fee status</dt>
+              <dd>{humanize(psbt.fee.status)}</dd>
+            </div>
+            <div>
+              <dt>Fee (sats)</dt>
+              <dd>{display(psbt.fee.fee_sats)}</dd>
+            </div>
+            <div>
+              <dt>Inputs</dt>
+              <dd>{inspection.input_count}</dd>
+            </div>
+            <div>
+              <dt>Outputs</dt>
+              <dd>{inspection.output_count}</dd>
+            </div>
+            <div>
+              <dt>Explicit RBF signal</dt>
+              <dd>{display(inspection.explicit_rbf)}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+
+      {/* Inputs Section */}
+      <section className="report-section inputs-section" aria-label="Inputs">
+        <div className="section-header-row">
+          <h3>Inputs <span className="count">{inspection.input_count}</span></h3>
+        </div>
+
         {inspection.inputs.map(input=>(
           <details key={input.index} className="fact-details" open={inspection.inputs.length === 1}>
             <summary>
@@ -342,8 +436,11 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
                   </div>
                 )}
                 {'script_sig_asm' in input && input.script_sig_asm !== undefined && (
-                  <div>
-                    <dt>ScriptSig Disassembly</dt>
+                  <div className="asm-grid-row">
+                    <dt className="asm-label-row">
+                      <span>ScriptSig Disassembly</span>
+                      <span className="script-badge">Script Disassembly</span>
+                    </dt>
                     <dd><code className="asm-code">{input.script_sig_asm || 'None (empty)'}</code></dd>
                   </div>
                 )}
@@ -354,6 +451,37 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
                   </div>
                 )}
               </dl>
+
+              {/* Expandable Witness Stack Section */}
+              {'witness_items' in input && input.witness_items && (
+                <details className="witness-stack-details" open={input.witness_items.length > 0}>
+                  <summary className="witness-stack-summary">
+                    <span className="witness-stack-title">Witness Stack</span>
+                    <span className="witness-count-badge">
+                      {input.witness_items.length} item{input.witness_items.length === 1 ? '' : 's'}
+                    </span>
+                  </summary>
+                  {input.witness_items.length === 0 ? (
+                    <p className="muted small empty-witness-note">No witness items (empty witness stack or legacy input).</p>
+                  ) : (
+                    <div className="witness-items-list">
+                      {input.witness_items.map((wItem) => (
+                        <div key={wItem.index} className="witness-item-card">
+                          <div className="witness-item-meta">
+                            <span className="witness-index-pill">Witness #{wItem.index}</span>
+                            <span className="witness-size-label">{wItem.size_bytes} byte{wItem.size_bytes === 1 ? '' : 's'}</span>
+                          </div>
+                          <div className="witness-item-body">
+                            <code className="hash-value witness-hex-code">
+                              {wItem.hex || '<empty item (0 bytes)>'}
+                            </code>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </details>
+              )}
 
               {'resolved_prevout' in input && input.resolved_prevout && (
                 <div className="prevout-card">
@@ -372,7 +500,10 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
                     </div>
                     {input.resolved_prevout.script_pubkey_asm && (
                       <div>
-                        <dt>ScriptPubKey Disassembly</dt>
+                        <dt className="asm-label-row">
+                          <span>ScriptPubKey Disassembly</span>
+                          <span className="script-badge">Script Disassembly</span>
+                        </dt>
                         <dd><code className="asm-code">{input.resolved_prevout.script_pubkey_asm}</code></dd>
                       </div>
                     )}
@@ -387,8 +518,21 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
             </div>
           </details>
         ))}
+      </section>
 
-        <h4>Outputs</h4>
+      {/* Outputs Section */}
+      <section className="report-section outputs-section" aria-label="Outputs">
+        <div className="section-header-row">
+          <h3>Outputs <span className="count">{inspection.output_count}</span></h3>
+        </div>
+
+        {isTransaction && (!('chain_context' in inspection) || !inspection.chain_context) && inspection.outputs.every(o => !o.address) && (
+          <div className="explorer-notice-banner network-notice" role="note">
+            <span className="notice-icon" aria-hidden="true">ℹ</span>
+            <span>Raw transaction data does not encode Bitcoin network.</span>
+          </div>
+        )}
+
         <div className="table-scroll">
           <table>
             <thead>
@@ -436,8 +580,11 @@ export function ReportView({report,onClear}:{report:Report;onClear:()=>void}) {
                   <dd className="hash-value">{output.script_pubkey_hex}</dd>
                 </div>
                 {'script_pubkey_asm' in output && output.script_pubkey_asm !== undefined && (
-                  <div>
-                    <dt>ScriptPubKey Disassembly</dt>
+                  <div className="asm-grid-row">
+                    <dt className="asm-label-row">
+                      <span>ScriptPubKey Disassembly</span>
+                      <span className="script-badge">Script Disassembly</span>
+                    </dt>
                     <dd><code className="asm-code">{output.script_pubkey_asm || 'None'}</code></dd>
                   </div>
                 )}

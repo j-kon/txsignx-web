@@ -7,6 +7,7 @@ import policies from '../../test/fixtures/policies.json'
 import txidConfirmed from '../../test/fixtures/txid_confirmed.json'
 import txidMempool from '../../test/fixtures/txid_mempool.json'
 import rawWithAddresses from '../../test/fixtures/raw_with_addresses.json'
+import { liveEventSchema } from './schema'
 
 const reply = (data: unknown, status = 200) => vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(data), {status, headers: {'Content-Type': 'application/json'}}))))
 afterEach(() => vi.unstubAllGlobals())
@@ -143,5 +144,227 @@ describe('API boundary', () => {
 
   it('rejects credential/query/fragment API URLs', () => {
     for (const url of ['https://user:secret@example.com','https://example.com?secret=1','https://example.com/#x','javascript:alert(1)']) expect(()=>new ApiClient(url)).toThrow('API URL')
+  })
+
+  it('fetches live snapshot, recent blocks, and mempool summary correctly', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    const snapshotData = {
+      network: 'regtest',
+      tip_height: 101,
+      tip_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      recent_blocks: [
+        {
+          height: 101,
+          hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+          tx_count: 5,
+          size: 1500,
+          weight: 4200,
+          timestamp: 1700000000
+        }
+      ],
+      mempool_tx_count: 2,
+      mempool_size_bytes: 800,
+      latest_transactions: [
+        {
+          txid: '0101010101010101010101010101010101010101010101010101010101010101',
+          vsize: 140,
+          weight: 560,
+          fee_sats: 1000,
+          fee_rate: 7.14,
+          input_count: 1,
+          output_count: 2,
+          explicit_rbf: true,
+          has_witness: true
+        }
+      ]
+    }
+    reply(snapshotData)
+    const snapshot = await api.liveSnapshot()
+    expect(snapshot.network).toBe('regtest')
+    expect(snapshot.tip_height).toBe(101)
+    expect(snapshot.recent_blocks?.length).toBe(1)
+    expect(snapshot.latest_transactions?.length).toBe(1)
+
+    reply(snapshotData.recent_blocks)
+    const blocks = await api.recentBlocks()
+    expect(blocks.length).toBe(1)
+    expect(blocks[0].height).toBe(101)
+
+    const mempoolData = {
+      tx_count: 2,
+      size_bytes: 800,
+      total_fee_sats: 5000
+    }
+    reply(mempoolData)
+    const mempool = await api.mempoolSummary()
+    expect(mempool.tx_count).toBe(2)
+  })
+
+  it('generates correct liveStreamUrl with ws and wss schemes', () => {
+    const httpApi = new ApiClient('http://127.0.0.1:8080')
+    expect(httpApi.liveStreamUrl()).toBe('ws://127.0.0.1:8080/api/v1/live/stream')
+
+    const httpsApi = new ApiClient('https://api.txsignx.com')
+    expect(httpsApi.liveStreamUrl()).toBe('wss://api.txsignx.com/api/v1/live/stream')
+  })
+
+  it('accepts live snapshot with null/undefined optional collections and missing structural facts', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    const minimalSnapshot = {
+      network: 'regtest',
+      tip_height: 105,
+      tip_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      recent_blocks: null,
+      mempool: null,
+      mempool_tx_count: null,
+      mempool_size_bytes: null,
+      latest_transactions: [
+        {
+          txid: '0101010101010101010101010101010101010101010101010101010101010101',
+          vsize: 140,
+          weight: 560,
+          // input_count, output_count, explicit_rbf, has_witness are omitted/null
+          mempool_replaceable: true,
+        }
+      ]
+    }
+    reply(minimalSnapshot)
+    const snapshot = await api.liveSnapshot()
+    expect(snapshot.network).toBe('regtest')
+    expect(snapshot.recent_blocks == null).toBe(true)
+    expect(snapshot.mempool == null).toBe(true)
+    expect(snapshot.latest_transactions?.[0].input_count == null).toBe(true)
+    expect(snapshot.latest_transactions?.[0].explicit_rbf == null).toBe(true)
+    expect(snapshot.latest_transactions?.[0].mempool_replaceable).toBe(true)
+  })
+
+  it('safely parses all valid LiveEvent types with liveEventSchema.parse', () => {
+    // 1. snapshot
+    const snapshotEvent = liveEventSchema.parse({
+      type: 'snapshot',
+      data: {
+        network: 'regtest',
+        tip_height: 101,
+        tip_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      }
+    })
+    expect(snapshotEvent?.type).toBe('snapshot')
+
+    // 2. transaction_added
+    const txAddedEvent = liveEventSchema.parse({
+      type: 'transaction_added',
+      data: {
+        txid: '0101010101010101010101010101010101010101010101010101010101010101',
+        vsize: 140,
+        weight: 560,
+      }
+    })
+    expect(txAddedEvent?.type).toBe('transaction_added')
+
+    // 3. transaction_removed
+    const txRemovedEvent = liveEventSchema.parse({
+      type: 'transaction_removed',
+      data: {
+        txid: '0101010101010101010101010101010101010101010101010101010101010101',
+      }
+    })
+    expect(txRemovedEvent?.type).toBe('transaction_removed')
+
+    // 4. transaction_confirmed
+    const txConfirmedEvent = liveEventSchema.parse({
+      type: 'transaction_confirmed',
+      data: {
+        txid: '0101010101010101010101010101010101010101010101010101010101010101',
+        block_hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+        block_height: 102,
+      }
+    })
+    expect(txConfirmedEvent?.type).toBe('transaction_confirmed')
+
+    // 5. block_connected
+    const blockEvent = liveEventSchema.parse({
+      type: 'block_connected',
+      data: {
+        height: 102,
+        hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+        tx_count: 5,
+      }
+    })
+    expect(blockEvent?.type).toBe('block_connected')
+
+    // 6. mempool_updated
+    const mempoolEvent = liveEventSchema.parse({
+      type: 'mempool_updated',
+      data: {
+        tx_count: 10,
+        size_bytes: 4000,
+      }
+    })
+    expect(mempoolEvent?.type).toBe('mempool_updated')
+  })
+
+  it('safely rejects malformed or unknown events returning null without throwing', () => {
+    expect(liveEventSchema.parse(null)).toBeNull()
+    expect(liveEventSchema.parse('not an object')).toBeNull()
+    expect(liveEventSchema.parse({})).toBeNull()
+    expect(liveEventSchema.parse({ type: 'unknown_type', data: {} })).toBeNull()
+    expect(liveEventSchema.parse({ type: 'transaction_added', data: { missing_txid: 123 } })).toBeNull()
+    expect(liveEventSchema.parse({ type: 'block_connected', data: { height: -1 } })).toBeNull()
+  })
+
+  it('fetches block details by hash and height with bounded query parameters', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    const sampleBlock = {
+      network: 'regtest',
+      height: 105,
+      hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+      previous_block_hash: '1111111111111111111111111111111111111111111111111111111111111111',
+      next_block_hash: null,
+      merkle_root: '2222222222222222222222222222222222222222222222222222222222222222',
+      version: 536870912,
+      timestamp: 1700000105,
+      median_time: 1700000100,
+      bits: '207fffff',
+      difficulty: 0.000000001,
+      tx_count: 2,
+      weight: 888,
+      size: 249,
+      transactions: {
+        items: [
+          { index: 0, txid: '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b', is_coinbase: true },
+          { index: 1, txid: '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101', is_coinbase: false },
+        ],
+        offset: 0,
+        limit: 50,
+        total: 2,
+        has_more: false,
+      },
+    }
+
+    reply(sampleBlock)
+    const res = await api.blockDetails('000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f', 0, 50)
+    expect(res.height).toBe(105)
+    expect(res.transactions.items[0].is_coinbase).toBe(true)
+    expect(fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8080/api/v1/blocks/000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f?offset=0&limit=50',
+      expect.objectContaining({ method: 'GET' })
+    )
+
+    reply(sampleBlock)
+    const byHeight = await api.blockDetailsByHeight(105)
+    expect(byHeight.height).toBe(105)
+    expect(fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8080/api/v1/blocks/height/105',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  it('translates invalid_block_hash and block_not_found errors properly', async () => {
+    const api = new ApiClient('http://127.0.0.1:8080')
+    reply({ error: { code: 'invalid_block_hash' } }, 400)
+    await expect(api.blockDetails('invalid')).rejects.toThrow('The supplied block hash is invalid.')
+
+    reply({ error: { code: 'block_not_found' } }, 404)
+    await expect(api.blockDetails('0000000000000000000000000000000000000000000000000000000000000404')).rejects.toThrow('Block not found.')
   })
 })

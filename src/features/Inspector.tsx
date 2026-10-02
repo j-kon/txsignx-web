@@ -247,7 +247,7 @@ export function Inspector({api}:{api:ApiClient}) {
                     <option value="regtest">Regtest (regtest)</option>
                   </select>
                   <span className="muted small">
-                    Raw transaction data does not encode Bitcoin network. Network is only used for address rendering.
+                    Raw transaction data does not encode Bitcoin network. Network is used only for address rendering; it is not encoded in raw transaction data.
                   </span>
                 </label>
               )}
@@ -282,7 +282,7 @@ export function Inspector({api}:{api:ApiClient}) {
                         setOperation('preflight')
                       }}
                     >
-                      Use sample
+                      {mode==='raw' ? 'Load Demo Transaction' : 'Use sample'}
                     </button>
                   </div>
                   <p className="muted small">

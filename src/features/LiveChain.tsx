@@ -12,7 +12,13 @@ import {
   liveEventSchema,
 } from '../lib/api/schema'
 import { ReportView } from './ReportView'
-import { getAdaptiveTimeWindow, computeCollisionFreeLayout } from './liveStreamLayout'
+import {
+  getAdaptiveTimeWindow,
+  computeCollisionFreeLayout,
+  formatBlockWeight,
+  formatBlockSize,
+  FRONTEND_WORKING_SET_LIMIT,
+} from './liveStreamLayout'
 
 interface LiveChainProps {
   api: ApiClient
@@ -188,7 +194,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             setBlocks(snap.recent_blocks)
           }
           if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
-            setTransactions(snap.latest_transactions)
+            setTransactions(snap.latest_transactions.slice(0, FRONTEND_WORKING_SET_LIMIT))
           }
         }
         break
@@ -199,7 +205,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           setNewTxids((prev) => new Set(prev).add(tx.txid))
           setTransactions((prev) => {
             if (prev.some((t) => t.txid === tx.txid)) return prev
-            return [tx, ...prev].slice(0, 350)
+            return [tx, ...prev].slice(0, FRONTEND_WORKING_SET_LIMIT)
           })
           // Remove new pulse tag after 2.5s
           setTimeout(() => {
@@ -303,7 +309,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           setBlocks(snap.recent_blocks)
         }
         if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
-          setTransactions(snap.latest_transactions)
+          setTransactions(snap.latest_transactions.slice(0, FRONTEND_WORKING_SET_LIMIT))
         }
         setErrorMessage('')
       } catch (err: unknown) {
@@ -587,13 +593,15 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   )
   const timeStampedTxs = useMemo(
     () => visibleTransactions.filter(
-      (tx) => tx.first_seen_at !== undefined && tx.first_seen_at !== null
+      (tx) => (tx.observed_at !== undefined && tx.observed_at !== null) ||
+              (tx.first_seen_at !== undefined && tx.first_seen_at !== null)
     ),
     [visibleTransactions]
   )
   const unstampedTxs = useMemo(
     () => visibleTransactions.filter(
-      (tx) => tx.first_seen_at === undefined || tx.first_seen_at === null
+      (tx) => (tx.observed_at === undefined || tx.observed_at === null) &&
+              (tx.first_seen_at === undefined || tx.first_seen_at === null)
     ),
     [visibleTransactions]
   )
@@ -601,7 +609,10 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   const maxTxAge = useMemo(() => {
     if (timeStampedTxs.length === 0) return 0
     return Math.max(
-      ...timeStampedTxs.map((t) => Math.max(0, nowSeconds - (t.first_seen_at ?? nowSeconds)))
+      ...timeStampedTxs.map((t) => {
+        const time = t.observed_at ?? t.first_seen_at ?? nowSeconds
+        return Math.max(0, nowSeconds - time)
+      })
     )
   }, [timeStampedTxs, nowSeconds])
 
@@ -959,26 +970,22 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     <div className="block-metrics-row">
                       <div className="block-metric">
                         <span className="sublabel">TXs</span>
-                        <span className="mono font-semibold">
+                        <span className="mono font-semibold metric-val">
                           {block.tx_count.toLocaleString()}
                         </span>
                       </div>
-                      {block.weight !== undefined && block.weight !== null && (
-                        <div className="block-metric">
-                          <span className="sublabel">Weight</span>
-                          <span className="mono">
-                            {(block.weight / 1000).toFixed(0)} kWU
-                          </span>
-                        </div>
-                      )}
-                      {block.size !== undefined && block.size !== null && (
-                        <div className="block-metric">
-                          <span className="sublabel">Size</span>
-                          <span className="mono">
-                            {(block.size / 1000).toFixed(1)} kB
-                          </span>
-                        </div>
-                      )}
+                      <div className="block-metric">
+                        <span className="sublabel">Weight</span>
+                        <span className="mono metric-val">
+                          {formatBlockWeight(block.weight)}
+                        </span>
+                      </div>
+                      <div className="block-metric">
+                        <span className="sublabel">Size</span>
+                        <span className="mono metric-val">
+                          {formatBlockSize(block.size)}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="block-explore-affordance" aria-hidden="true">
@@ -1000,7 +1007,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               TxSignX Live Flow
             </h2>
             <span className="live-count-badge">
-              {visibleTransactions.length} of {transactions.length} mempool {transactions.length === 1 ? 'entry' : 'entries'}
+              {visibleTransactions.length} shown · {transactions.length} recently observed
             </span>
           </div>
 
@@ -1084,10 +1091,10 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             <span>Size = vB</span>
             <span className="sr-only">Node width/size = Virtual Size (vB)</span>
           </div>
-          <div className="legend-chip">
+          <div className="legend-chip" title="Amber outline indicates transaction explicitly signals BIP 125 replaceability">
             <span className="legend-chip-icon chip-rbf" aria-hidden="true" />
-            <span>RBF Outline</span>
-            <span className="sr-only">Amber outline = BIP 125 Explicit RBF</span>
+            <span>RBF = Signals replaceability (BIP 125)</span>
+            <span className="sr-only">Amber outline = BIP 125 Explicit RBF: transaction explicitly signals replaceability</span>
           </div>
           <div className="legend-chip">
             <span className="legend-chip-badge" aria-hidden="true">
@@ -1152,9 +1159,14 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               <span className="axis-marker marker-right">{adaptiveWindow.axisTicks[4]} (Live)</span>
             </div>
 
-            {/* Subtle explanation note: vertical position avoids overlap */}
+            {/* Subtle explanation note: horizontal recency, vertical position avoids overlap */}
             <div className="time-stream-helper-bar">
-              <span className="stream-lane-hint">Vertical position is used only to avoid overlap.</span>
+              <span
+                className="stream-lane-hint"
+                title="Position reflects when TxSignX observed the transaction, not necessarily its first propagation across the Bitcoin network."
+              >
+                Horizontal position reflects TxSignX observation recency. Vertical lanes avoid overlap.
+              </span>
             </div>
 
             {/* Time Stream Scene */}
@@ -1190,6 +1202,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 const isCompact = layout.densityTier === 'compact'
                 const isMedium = layout.densityTier === 'medium'
 
+                const isPending =
+                  tx.vsize === undefined || tx.vsize === null || tx.hydration_status === 'pending'
+                const displayVsize =
+                  tx.vsize !== undefined && tx.vsize !== null ? `${tx.vsize} vB` : 'vsize: Pending'
+
                 return (
                   <button
                     type="button"
@@ -1199,7 +1216,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                       isSelected ? 'selected' : ''
                     } ${isNew ? 'node-enter-now flow-pulse-inbound' : ''} ${
                       isCompact ? 'node-compact' : isMedium ? 'node-medium' : 'node-large'
-                    }`}
+                    } ${isPending ? 'pending-hydration' : ''}`}
                     style={{
                       left: `${layout.leftPercent}%`,
                       top: `${layout.topPercent}%`,
@@ -1210,12 +1227,14 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                       triggerElementRef.current = document.activeElement as HTMLElement
                       setSelectedTx(tx)
                     }}
-                    aria-label={`Transaction ${truncateHash(tx.txid, 6, 6)}, ${tx.vsize} vB, fee rate ${
+                    aria-label={`Transaction ${truncateHash(tx.txid, 6, 6)}, ${displayVsize}, ${
                       tx.fee_rate !== undefined && tx.fee_rate !== null
-                        ? tx.fee_rate.toFixed(1)
-                        : '—'
-                    } sat per vB`}
-                    title={`${truncateHash(tx.txid, 8, 8)} | ${tx.vsize} vB | ${
+                        ? `${tx.fee_rate.toFixed(1)} sat/vB`
+                        : isPending
+                        ? 'Loading fee rate'
+                        : 'No fee rate'
+                    }`}
+                    title={`${truncateHash(tx.txid, 8, 8)} | ${displayVsize} | ${
                       tx.fee_rate !== undefined && tx.fee_rate !== null
                         ? `${tx.fee_rate.toFixed(1)} sat/vB`
                         : 'No fee rate'
@@ -1224,8 +1243,8 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     {/* Clean inner orb: only shown for medium and large tiers */}
                     {!isCompact && (
                       <div className="node-orb-inner">
-                        <span className="node-vsize-num">{tx.vsize}</span>
-                        {!isMedium && <span className="node-vsize-unit">vB</span>}
+                        <span className="node-vsize-num">{isPending ? '…' : tx.vsize}</span>
+                        {!isMedium && !isPending && <span className="node-vsize-unit">vB</span>}
                       </div>
                     )}
 
@@ -1253,13 +1272,17 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         <code className="tooltip-txid-code">{truncateHash(tx.txid, 5, 4)}</code>
                       </div>
                       <div className="tooltip-metrics-row">
-                        <span className="tooltip-age">{formatRelativeTime(tx.first_seen_at)}</span>
+                        <span className="tooltip-age" title="Observed recency by TxSignX">
+                          {formatRelativeTime(tx.observed_at ?? tx.first_seen_at)}
+                        </span>
                         <span className="tooltip-sep">·</span>
-                        <span className="tooltip-vsize">{tx.vsize} vB</span>
+                        <span className="tooltip-vsize">{displayVsize}</span>
                         <span className="tooltip-sep">·</span>
                         <span className="tooltip-feerate">
                           {tx.fee_rate !== undefined && tx.fee_rate !== null
                             ? `${tx.fee_rate.toFixed(1)} sat/vB`
+                            : isPending
+                            ? 'Details: Loading…'
                             : '—'}
                         </span>
                         <span className="sr-only">
@@ -1308,7 +1331,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         }}
                       >
                         <code>{truncateHash(tx.txid, 5, 4)}</code>
-                        <span className="chip-vsize">{tx.vsize} vB</span>
+                        <span className="chip-vsize">{tx.vsize !== undefined && tx.vsize !== null ? `${tx.vsize} vB` : 'Pending'}</span>
                         {tx.fee_rate !== undefined && tx.fee_rate !== null && (
                           <span className="node-feerate">{tx.fee_rate.toFixed(1)} s/vB</span>
                         )}
@@ -1766,86 +1789,150 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 <span className="status-pill pill-mempool">In Mempool (0 confirmations)</span>
               </div>
 
-              {/* Numerical facts */}
-              <div className="drawer-stats-grid">
-                <div className="drawer-stat-item">
-                  <span className="stat-label">Virtual Size</span>
-                  <span className="stat-val mono">{selectedTx.vsize} vB</span>
-                </div>
-                <div className="drawer-stat-item">
-                  <span className="stat-label">Weight</span>
-                  <span className="stat-val mono">{selectedTx.weight.toLocaleString()} WU</span>
-                </div>
-                <div className="drawer-stat-item">
-                  <span className="stat-label">Fee</span>
-                  <span className="stat-val mono">
-                    {selectedTx.fee_sats !== undefined && selectedTx.fee_sats !== null
-                      ? `${selectedTx.fee_sats.toLocaleString()} sats`
-                      : 'Unavailable'}
-                  </span>
-                </div>
-                <div className="drawer-stat-item">
-                  <span className="stat-label">Fee Rate</span>
-                  <span className="stat-val mono">
-                    {selectedTx.fee_rate !== undefined && selectedTx.fee_rate !== null
-                      ? `${selectedTx.fee_rate.toFixed(1)} sat/vB`
-                      : 'Unavailable'}
-                  </span>
-                </div>
-                <div className="drawer-stat-item">
-                  <span className="stat-label">Inputs</span>
-                  <span className="stat-val mono">
-                    {selectedTx.input_count !== undefined && selectedTx.input_count !== null
-                      ? selectedTx.input_count
-                      : 'Unavailable'}
-                  </span>
-                </div>
-                <div className="drawer-stat-item">
-                  <span className="stat-label">Outputs</span>
-                  <span className="stat-val mono">
-                    {selectedTx.output_count !== undefined && selectedTx.output_count !== null
-                      ? selectedTx.output_count
-                      : 'Unavailable'}
-                  </span>
-                </div>
+              {/* Bitcoin Transaction Facts */}
+              <div className="drawer-section-heading">
+                <h4 className="secondary-facts-title">Bitcoin Transaction Facts</h4>
               </div>
 
-              {/* SegWit & RBF Badges (Section 18) */}
-              <div className="drawer-badges-row">
-                <div className="drawer-badge-group">
-                  <span className="sublabel">SegWit Witness Data</span>
-                  <span
-                    className={`status-pill ${
-                      selectedTx.has_witness === true
-                        ? 'pill-segwit'
-                        : selectedTx.has_witness === false
-                        ? 'pill-neutral'
-                        : 'pill-unavailable'
-                    }`}
-                  >
-                    {selectedTx.has_witness === true
-                      ? 'Yes (Witness Present)'
-                      : selectedTx.has_witness === false
-                      ? 'No'
-                      : 'Unavailable'}
+              {(() => {
+                const isPending =
+                  selectedTx.vsize === undefined &&
+                  selectedTx.weight === undefined &&
+                  selectedTx.fee_sats === undefined
+
+                return (
+                  <>
+                    <div className="drawer-stats-grid">
+                      <div className="drawer-stat-item">
+                        <span className="stat-label">Virtual Size</span>
+                        <span className="stat-val mono">
+                          {selectedTx.vsize !== undefined && selectedTx.vsize !== null
+                            ? `${selectedTx.vsize.toLocaleString()} vB`
+                            : isPending
+                            ? 'Pending hydration'
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                      <div className="drawer-stat-item">
+                        <span className="stat-label">Weight</span>
+                        <span className="stat-val mono">
+                          {selectedTx.weight !== undefined && selectedTx.weight !== null
+                            ? `${selectedTx.weight.toLocaleString()} WU`
+                            : isPending
+                            ? 'Pending hydration'
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                      <div className="drawer-stat-item">
+                        <span className="stat-label">Fee</span>
+                        <span className="stat-val mono">
+                          {selectedTx.fee_sats !== undefined && selectedTx.fee_sats !== null
+                            ? `${selectedTx.fee_sats.toLocaleString()} sats`
+                            : isPending
+                            ? 'Pending hydration'
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                      <div className="drawer-stat-item">
+                        <span className="stat-label">Fee Rate</span>
+                        <span className="stat-val mono">
+                          {selectedTx.fee_rate !== undefined && selectedTx.fee_rate !== null
+                            ? `${selectedTx.fee_rate.toFixed(1)} sat/vB`
+                            : isPending
+                            ? 'Pending hydration'
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                      <div className="drawer-stat-item">
+                        <span className="stat-label">Inputs</span>
+                        <span className="stat-val mono">
+                          {selectedTx.input_count !== undefined && selectedTx.input_count !== null
+                            ? selectedTx.input_count
+                            : isPending
+                            ? 'Pending hydration'
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                      <div className="drawer-stat-item">
+                        <span className="stat-label">Outputs</span>
+                        <span className="stat-val mono">
+                          {selectedTx.output_count !== undefined && selectedTx.output_count !== null
+                            ? selectedTx.output_count
+                            : isPending
+                            ? 'Pending hydration'
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* SegWit & RBF Badges */}
+                    <div className="drawer-badges-row">
+                      <div className="drawer-badge-group">
+                        <span className="sublabel">SegWit Witness Data</span>
+                        <span
+                          className={`status-pill ${
+                            selectedTx.has_witness === true
+                              ? 'pill-segwit'
+                              : selectedTx.has_witness === false
+                              ? 'pill-neutral'
+                              : 'pill-unavailable'
+                          }`}
+                        >
+                          {selectedTx.has_witness === true
+                            ? 'Yes (Witness Present)'
+                            : selectedTx.has_witness === false
+                            ? 'No'
+                            : isPending
+                            ? 'Pending hydration'
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                      <div className="drawer-badge-group">
+                        <span className="sublabel">BIP 125 Explicit RBF</span>
+                        <span
+                          className={`status-pill ${
+                            selectedTx.explicit_rbf === true
+                              ? 'pill-rbf'
+                              : selectedTx.explicit_rbf === false
+                              ? 'pill-neutral'
+                              : 'pill-unavailable'
+                          }`}
+                        >
+                          {selectedTx.explicit_rbf === true
+                            ? 'Explicit RBF Enabled'
+                            : selectedTx.explicit_rbf === false
+                            ? 'No'
+                            : isPending
+                            ? 'Pending hydration'
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+
+              {/* TxSignX Observation Metadata Card */}
+              <div className="drawer-section-heading" style={{ marginTop: '16px' }}>
+                <h4 className="secondary-facts-title">TxSignX Observation Metadata</h4>
+              </div>
+              <div className="drawer-stats-grid">
+                <div className="drawer-stat-item">
+                  <span className="stat-label">Observed At</span>
+                  <span className="stat-val mono" style={{ fontSize: '12px' }}>
+                    {formatRelativeTime(selectedTx.observed_at ?? selectedTx.first_seen_at)}
                   </span>
                 </div>
-                <div className="drawer-badge-group">
-                  <span className="sublabel">BIP 125 Explicit RBF</span>
-                  <span
-                    className={`status-pill ${
-                      selectedTx.explicit_rbf === true
-                        ? 'pill-rbf'
-                        : selectedTx.explicit_rbf === false
-                        ? 'pill-neutral'
-                        : 'pill-unavailable'
-                    }`}
-                  >
-                    {selectedTx.explicit_rbf === true
-                      ? 'Explicit RBF Enabled'
-                      : selectedTx.explicit_rbf === false
-                      ? 'No'
-                      : 'Unavailable'}
+                <div className="drawer-stat-item">
+                  <span className="stat-label">Hydration Status</span>
+                  <span className="stat-val mono" style={{ fontSize: '12px' }}>
+                    {selectedTx.hydration_status ? selectedTx.hydration_status.toUpperCase() : 'PENDING'}
+                  </span>
+                </div>
+                <div className="drawer-stat-item col-span-2">
+                  <span className="stat-label">Feed Source</span>
+                  <span className="stat-val mono" style={{ fontSize: '12px' }}>
+                    {selectedTx.source === 'public_mainnet' ? 'Public Mainnet Feed' : selectedTx.source || 'Default'}
                   </span>
                 </div>
               </div>

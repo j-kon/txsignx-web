@@ -3729,7 +3729,7 @@ th {
 
 /* Individual Recent Block Card (as interactive button) */
 .recent-block-card {
-  flex: 0 0 220px;
+  flex: 0 0 255px;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(59, 130, 246, 0.2);
@@ -3857,25 +3857,40 @@ th {
 }
 
 .block-metrics-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
   border-top: 1px solid rgba(59, 130, 246, 0.12);
-  padding-top: 0.5rem;
-  font-size: 0.78rem;
+  padding-top: 0.55rem;
+  font-size: 0.76rem;
+  text-align: left;
 }
 
 .block-metric {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
 .block-metric .sublabel {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
+  font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.block-metric .metric-val {
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #edf2f8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .block-explore-affordance {
@@ -4211,9 +4226,12 @@ th {
   padding: 0;
   transition: left 1s cubic-bezier(0.25, 1, 0.5, 1),
     top 0.4s ease,
+    width 0.35s ease,
+    height 0.35s ease,
     transform 0.2s ease,
     box-shadow 0.2s ease,
-    border-color 0.2s ease;
+    border-color 0.2s ease,
+    opacity 0.3s ease;
   z-index: 10;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 }
@@ -4231,6 +4249,18 @@ th {
   z-index: 40;
 }
 
+.stream-tx-node.pending-hydration {
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  background: radial-gradient(circle at 35% 35%, #1e293b 0%, #0f172a 100%);
+  opacity: 0.85;
+}
+
+.stream-tx-node.pending-hydration .node-vsize-num {
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: normal;
+}
+
 .stream-tx-node.rbf-indicated {
   border: 2px solid #f7931a;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 8px rgba(247, 147, 26, 0.3);
@@ -4241,12 +4271,32 @@ th {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.6), 0 6px 20px rgba(0, 0, 0, 0.6);
 }
 
-/* Arrival Ring Animation for New Transactions */
+/* Arrival Ring Animation for New Transactions: Default Cyan/Blue Pulse */
 .stream-tx-node.node-enter-now {
   animation: tx-arrival-pulse 2.2s ease-out;
 }
 
+/* RBF-indicated arrival pulse: explicit amber pulse */
+.stream-tx-node.rbf-indicated.node-enter-now {
+  animation: tx-rbf-arrival-pulse 2.2s ease-out;
+}
+
 @keyframes tx-arrival-pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.85), 0 0 24px rgba(0, 229, 255, 0.65);
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(1.12);
+    box-shadow: 0 0 0 8px rgba(0, 229, 255, 0.2), 0 0 16px rgba(0, 229, 255, 0.35);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@keyframes tx-rbf-arrival-pulse {
   0% {
     transform: translate(-50%, -50%) scale(0.6);
     box-shadow: 0 0 0 0 rgba(247, 147, 26, 0.9), 0 0 24px rgba(247, 147, 26, 0.7);
@@ -4257,7 +4307,7 @@ th {
   }
   100% {
     transform: translate(-50%, -50%) scale(1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 8px rgba(247, 147, 26, 0.3);
   }
 }
 

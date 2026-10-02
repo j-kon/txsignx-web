@@ -102,10 +102,10 @@ export function computeCollisionFreeLayout(
       ? LANE_PERCENTAGES_MEDIUM
       : LANE_PERCENTAGES_COMPACT
 
-  // Sort deterministically: newest first (highest first_seen_at), tie-break by txid
+  // Sort deterministically: newest first (highest observed_at or first_seen_at), tie-break by txid
   const sorted = [...transactions].sort((a, b) => {
-    const aTime = a.first_seen_at ?? 0
-    const bTime = b.first_seen_at ?? 0
+    const aTime = a.observed_at ?? a.first_seen_at ?? 0
+    const bTime = b.observed_at ?? b.first_seen_at ?? 0
     if (bTime !== aTime) return bTime - aTime
     return a.txid.localeCompare(b.txid)
   })
@@ -117,8 +117,8 @@ export function computeCollisionFreeLayout(
   )
 
   sorted.forEach((tx, txIndex) => {
-    const firstSeen = tx.first_seen_at ?? nowSeconds
-    const ageSeconds = Math.max(0, nowSeconds - firstSeen)
+    const observedTime = tx.observed_at ?? tx.first_seen_at ?? nowSeconds
+    const ageSeconds = Math.max(0, nowSeconds - observedTime)
     const progress = Math.min(1.0, Math.max(0, ageSeconds / windowSeconds))
     // NOW at right (92%), window boundary at left (6%)
     const baseLeftPercent = (1 - progress) * 86 + 6
@@ -126,17 +126,27 @@ export function computeCollisionFreeLayout(
     let sizePx: number
     let clearancePercent: number
 
+    const hasVsize = tx.vsize !== undefined && tx.vsize !== null
+    const isPending = !hasVsize || tx.hydration_status === 'pending'
+    const actualVsize = tx.vsize ?? 0
+
     if (densityTier === 'compact') {
-      // 10px to 22px
-      sizePx = Math.min(22, Math.max(10, 10 + Math.round(((tx.vsize || 140) / 800) * 12)))
+      // 10px to 22px (neutral visual fallback: 12px)
+      sizePx = isPending
+        ? 12
+        : Math.min(22, Math.max(10, 10 + Math.round((actualVsize / 800) * 12)))
       clearancePercent = Math.max(2.0, (sizePx / 800) * 100 + 0.8)
     } else if (densityTier === 'medium') {
-      // 28px to 40px
-      sizePx = Math.min(40, Math.max(28, 28 + Math.round(((tx.vsize || 140) / 700) * 12)))
+      // 28px to 40px (neutral visual fallback: 30px)
+      sizePx = isPending
+        ? 30
+        : Math.min(40, Math.max(28, 28 + Math.round((actualVsize / 700) * 12)))
       clearancePercent = Math.max(3.8, (sizePx / 800) * 100 + 1.5)
     } else {
-      // 44px to 72px
-      sizePx = Math.min(72, Math.max(44, 44 + Math.round(((tx.vsize || 140) / 600) * 28)))
+      // 44px to 72px (neutral visual fallback: 48px)
+      sizePx = isPending
+        ? 48
+        : Math.min(72, Math.max(44, 44 + Math.round((actualVsize / 600) * 28)))
       clearancePercent = Math.max(7.0, (sizePx / 800) * 100 + 2.5)
     }
 
@@ -239,4 +249,18 @@ export function computeCollisionFreeLayout(
   })
 
   return result
+}
+
+export const FRONTEND_WORKING_SET_LIMIT = 350
+
+export function formatBlockWeight(weight: number | null | undefined): string {
+  if (weight === null || weight === undefined) return '—'
+  const kwu = Math.round(weight / 1000)
+  return `${kwu.toLocaleString()} kWU`
+}
+
+export function formatBlockSize(size: number | null | undefined): string {
+  if (size === null || size === undefined) return '—'
+  const kb = size / 1000
+  return `${kb.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kB`
 }

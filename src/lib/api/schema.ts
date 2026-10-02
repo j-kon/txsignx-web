@@ -86,8 +86,8 @@ export const mempoolSummarySchema = object({
 export const liveTransactionSchema = object({
   txid: str,
   wtxid: optional(str),
-  vsize: uint,
-  weight: uint,
+  vsize: optional(uint),
+  weight: optional(uint),
   fee_sats: optional(uint),
   fee_rate: optional(float),
   input_count: optional(uint),
@@ -96,6 +96,7 @@ export const liveTransactionSchema = object({
   mempool_replaceable: optional(bool),
   has_witness: optional(bool),
   first_seen_at: optional(uint),
+  observed_at: optional(uint),
   depends: optional(array(str)),
   source: optional(str),
   hydration_status: optional(str),

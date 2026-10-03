@@ -350,7 +350,6 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         ws.onopen = () => {
           if (!activeRef.current) return
           setConnectionStatus('connected')
-          setErrorMessage('')
         }
 
         ws.onmessage = (e) => {

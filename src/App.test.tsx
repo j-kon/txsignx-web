@@ -103,7 +103,7 @@ class MockWebSocket {
       this.onopen?.()
       if (Array.isArray(liveSnapshotData?.latest_transactions)) {
         liveSnapshotData.latest_transactions.forEach((tx: any) => {
-          this.emit({ type: 'transaction_added', data: tx })
+          this.emit({ type: 'transaction_added', data: { ...tx, observed_at: Math.floor(Date.now() / 1000) } })
         })
       }
     })

@@ -83,7 +83,7 @@ class MockWebSocket {
       this.readyState = 1
       this.onopen?.()
       mockSnapshot.latest_transactions.forEach((tx) => {
-        this.emit({ type: 'transaction_added', data: tx })
+        this.emit({ type: 'transaction_added', data: { ...tx, observed_at: Math.floor(Date.now() / 1000) } })
       })
     }, 10)
   }

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import '../test/setupDom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from '../App'
@@ -486,5 +487,485 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
       expect(window.location.hash).toBe('#live')
     })
     expect(await screen.findByRole('heading', { name: 'Live Bitcoin Chain & Mempool' })).toBeTruthy()
+  })
+
+  // =========================================================================
+  // Section 7: Live Session Lifecycle & Bounded Window Tests
+  // =========================================================================
+
+  it('live transaction expires after active window', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'active_window_tx_000000000000000000000000000000000000000000000001'
+    const now = Math.floor(Date.now() / 1000)
+
+    // Add a live transaction observed 95 seconds ago (exceeds default 90s active window)
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now - 95,
+      },
+    })
+
+    // It should not be in the animated active live flow stream
+    await waitFor(() => {
+      const activeNode = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)
+      expect(activeNode).toBeNull()
+    })
+  })
+
+  it('expired transaction no longer counts as live observation', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'expired_count_tx_000000000000000000000000000000000000000000000002'
+    const now = Math.floor(Date.now() / 1000)
+
+    // Add live transaction older than 90s window
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now - 95,
+      },
+    })
+
+    await waitFor(() => {
+      // Live count badge must show 0 live observations
+      expect(screen.getByText(/0 live observations/)).toBeTruthy()
+    })
+  })
+
+  it('expired transaction may remain in Recent Observations', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'recent_obs_retained_tx_0000000000000000000000000000000000000003'
+    const now = Math.floor(Date.now() / 1000)
+
+    // Emit live transaction that has aged beyond active window but within working set limit
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now - 95,
+      },
+    })
+
+    await waitFor(() => {
+      // Not in live drift scene
+      expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeNull()
+      // Retained in Recent Observations tray
+      expect(document.querySelector(`.recent-observations-tray [data-txid="${txid}"]`)).toBeTruthy()
+    })
+  })
+
+  it('liveSessionTxids does not retain IDs absent from transactions', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'prune_absent_tx_000000000000000000000000000000000000000000000004'
+    const now = Math.floor(Date.now() / 1000)
+
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now,
+      },
+    })
+
+    await waitFor(() => {
+      expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeTruthy()
+    })
+
+    // Now a snapshot arrives replacing transactions working set without txid
+    ws.emit({
+      type: 'snapshot',
+      data: {
+        network: 'bitcoin',
+        tip_height: 890001,
+        tip_hash: '00000000000000000002b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5',
+        recent_blocks: [],
+        mempool_tx_count: 81600,
+        mempool_size_bytes: 65100000,
+        latest_transactions: [
+          {
+            txid: 'other_tx_00000000000000000000000000000000000000000000000000000005',
+            vsize: 200,
+            weight: 800,
+            fee_sats: 2000,
+            fee_rate: 10.0,
+            explicit_rbf: false,
+            observed_at: now,
+          },
+        ],
+      },
+    })
+
+    await waitFor(() => {
+      // Absent txid is pruned and not in live stream
+      expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeNull()
+      expect(screen.getByText(/0 live observations/)).toBeTruthy()
+    })
+  })
+
+  it('confirmed transaction is removed immediately', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'immediate_confirm_tx_000000000000000000000000000000000000000006'
+    const now = Math.floor(Date.now() / 1000)
+
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now,
+      },
+    })
+
+    await waitFor(() => {
+      expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeTruthy()
+    })
+
+    ws.emit({
+      type: 'transaction_confirmed',
+      data: {
+        txid,
+        block_height: 890001,
+        block_hash: '00000000000000000002b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5',
+      },
+    })
+
+    await waitFor(() => {
+      const node = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)
+      expect(node?.classList.contains('node-exit-confirmed')).toBe(true)
+    })
+  })
+
+  it('generic removed transaction is removed immediately', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'immediate_removed_tx_000000000000000000000000000000000000000007'
+    const now = Math.floor(Date.now() / 1000)
+
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now,
+      },
+    })
+
+    await waitFor(() => {
+      expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeTruthy()
+    })
+
+    ws.emit({
+      type: 'transaction_removed',
+      data: {
+        txid,
+        reason: 'evicted',
+      },
+    })
+
+    await waitFor(() => {
+      const node = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)
+      expect(node?.classList.contains('node-exit-removed')).toBe(true)
+    })
+  })
+
+  it('snapshot does not add IDs to liveSessionTxids', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const now = Math.floor(Date.now() / 1000)
+    const snapTxid = 'snapshot_only_tx_0000000000000000000000000000000000000000008'
+
+    ws.emit({
+      type: 'snapshot',
+      data: {
+        network: 'bitcoin',
+        tip_height: 890001,
+        tip_hash: '00000000000000000002b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5',
+        recent_blocks: [],
+        mempool_tx_count: 81600,
+        mempool_size_bytes: 65100000,
+        latest_transactions: [
+          {
+            txid: snapTxid,
+            vsize: 200,
+            weight: 800,
+            fee_sats: 2000,
+            fee_rate: 10.0,
+            explicit_rbf: false,
+            observed_at: now,
+          },
+        ],
+      },
+    })
+
+    await waitFor(() => {
+      // Must not be in live flow stream scene
+      expect(document.querySelector(`.time-stream-scene [data-txid="${snapTxid}"]`)).toBeNull()
+      // Live count remains 0
+      expect(screen.getByText(/0 live observations/)).toBeTruthy()
+      // But present in recent cached observations
+      expect(document.querySelector(`.recent-observations-tray [data-txid="${snapTxid}"]`)).toBeTruthy()
+    })
+  })
+
+  it('snapshot prunes stale IDs', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const now = Math.floor(Date.now() / 1000)
+    const liveTx1 = 'live_tx1_keep_0000000000000000000000000000000000000000000009'
+    const liveTx2 = 'live_tx2_stale_000000000000000000000000000000000000000000010'
+
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid: liveTx1,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now,
+      },
+    })
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid: liveTx2,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now,
+      },
+    })
+
+    await waitFor(() => {
+      expect(document.querySelector(`.time-stream-scene [data-txid="${liveTx1}"]`)).toBeTruthy()
+      expect(document.querySelector(`.time-stream-scene [data-txid="${liveTx2}"]`)).toBeTruthy()
+    })
+
+    // Snapshot arrives containing liveTx1, but omitting liveTx2
+    ws.emit({
+      type: 'snapshot',
+      data: {
+        network: 'bitcoin',
+        tip_height: 890001,
+        tip_hash: '00000000000000000002b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5',
+        recent_blocks: [],
+        mempool_tx_count: 81600,
+        mempool_size_bytes: 65100000,
+        latest_transactions: [
+          {
+            txid: liveTx1,
+            vsize: 200,
+            weight: 800,
+            fee_sats: 2000,
+            fee_rate: 10.0,
+            explicit_rbf: false,
+            observed_at: now,
+          },
+        ],
+      },
+    })
+
+    await waitFor(() => {
+      expect(document.querySelector(`.time-stream-scene [data-txid="${liveTx1}"]`)).toBeTruthy()
+      expect(document.querySelector(`.time-stream-scene [data-txid="${liveTx2}"]`)).toBeNull()
+      expect(screen.getByText(/1 live observations/)).toBeTruthy()
+    })
+  })
+
+  it('reduced-motion mode still expires live entries without animationend', async () => {
+    // Under reduced motion, animations are disabled, but time-based expiry must still work
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'reduced_motion_expire_00000000000000000000000000000000000000011'
+    const now = Math.floor(Date.now() / 1000)
+
+    // Add transaction aged past active window (e.g. 95s)
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now - 95,
+      },
+    })
+
+    await waitFor(() => {
+      // Expired without relying on any animationend event
+      expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeNull()
+      expect(screen.getByText(/0 live observations/)).toBeTruthy()
+    })
+  })
+
+  it('animationend for live-stream-drift removes animated membership', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'anim_end_tx_0000000000000000000000000000000000000000000000012'
+    const now = Math.floor(Date.now() / 1000)
+
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now,
+      },
+    })
+
+    await waitFor(() => {
+      const node = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)
+      expect(node).toBeTruthy()
+    })
+
+    const node = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`) as HTMLElement
+    // Dispatch animationend with live-stream-drift
+    fireEvent.animationEnd(node, { animationName: 'live-stream-drift' })
+
+    await waitFor(() => {
+      // Removed from moving stream scene
+      expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeNull()
+      // But retained in Recent Observations tray
+      expect(document.querySelector(`.recent-observations-tray [data-txid="${txid}"]`)).toBeTruthy()
+    })
+  })
+
+  it('unrelated animationend does not remove transaction', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'unrelated_anim_tx_00000000000000000000000000000000000000000013'
+    const now = Math.floor(Date.now() / 1000)
+
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now,
+      },
+    })
+
+    await waitFor(() => {
+      const node = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)
+      expect(node).toBeTruthy()
+    })
+
+    const node = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`) as HTMLElement
+    // Dispatch animationend with an unrelated animation name
+    fireEvent.animationEnd(node, { animationName: 'flow-pulse-inbound' })
+
+    // Node remains in active live stream
+    expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeTruthy()
+    expect(screen.getByText(/1 live observations/)).toBeTruthy()
+  })
+
+  it('CSS timing properties remain stable while expiry clock advances', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
+
+    const txid = 'stable_timing_tx_0000000000000000000000000000000000000000014'
+    const now = Math.floor(Date.now() / 1000)
+
+    ws.emit({
+      type: 'transaction_added',
+      data: {
+        txid,
+        vsize: 200,
+        weight: 800,
+        fee_sats: 2000,
+        fee_rate: 10.0,
+        explicit_rbf: false,
+        observed_at: now,
+      },
+    })
+
+    await waitFor(() => {
+      expect(document.querySelector(`.time-stream-scene [data-txid="${txid}"]`)).toBeTruthy()
+    })
+
+    const node = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`) as HTMLElement
+    const initialDelay = node.style.getPropertyValue('--stream-delay')
+    const initialDuration = node.style.getPropertyValue('--stream-duration')
+
+    expect(initialDelay).toBeTruthy()
+    expect(initialDuration).toBeTruthy()
+
+    // Advance clock by 1.2s to trigger textual clock tick
+    await new Promise((r) => setTimeout(r, 1200))
+
+    const nodeAfterTick = document.querySelector(`.time-stream-scene [data-txid="${txid}"]`) as HTMLElement
+    expect(nodeAfterTick.style.getPropertyValue('--stream-delay')).toBe(initialDelay)
+    expect(nodeAfterTick.style.getPropertyValue('--stream-duration')).toBe(initialDuration)
   })
 })

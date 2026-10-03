@@ -161,10 +161,39 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     }
   }
 
-  // Clock tick timer
+  const transactionsRef = useRef(transactions)
+  useEffect(() => {
+    transactionsRef.current = transactions
+  }, [transactions])
+
+  // 1-second textual relative-time tick & periodic expiry cleanup (Sections 3 & 5)
+  // Only updates textual age strings and prunes expired IDs (>120s or evicted);
+  // does NOT touch CSS animation delay/duration
   useEffect(() => {
     const timer = setInterval(() => {
-      setNowSeconds(Math.floor(Date.now() / 1000))
+      const now = Math.floor(Date.now() / 1000)
+      setNowSeconds(now)
+      setLiveSessionTxids((prev) => {
+        if (prev.size === 0) return prev
+        const currentTxs = transactionsRef.current
+        const txMap = new Map(currentTxs.map((t) => [t.txid, t]))
+        let changed = false
+        const next = new Set<string>()
+        for (const id of prev) {
+          const tx = txMap.get(id)
+          if (!tx) {
+            changed = true
+            continue
+          }
+          const time = tx.observed_at ?? tx.first_seen_at
+          if (time !== undefined && time !== null && now - time > 120) {
+            changed = true
+            continue
+          }
+          next.add(id)
+        }
+        return changed ? next : prev
+      })
     }, 1000)
     return () => clearInterval(timer)
   }, [])
@@ -195,7 +224,25 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             setBlocks(snap.recent_blocks)
           }
           if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
-            setTransactions(snap.latest_transactions.slice(0, FRONTEND_WORKING_SET_LIMIT))
+            const nextTxs = snap.latest_transactions.slice(0, FRONTEND_WORKING_SET_LIMIT)
+            setTransactions(nextTxs)
+            // Intersect liveSessionTxids with transactions still present and inside the active live window (Section 5)
+            const now = Math.floor(Date.now() / 1000)
+            const presentTxMap = new Map(nextTxs.map((t) => [t.txid, t]))
+            setLiveSessionTxids((prev) => {
+              if (prev.size === 0) return prev
+              const next = new Set<string>()
+              for (const id of prev) {
+                const tx = presentTxMap.get(id)
+                if (tx) {
+                  const time = tx.observed_at ?? tx.first_seen_at
+                  if (time === undefined || now - time <= 120) {
+                    next.add(id)
+                  }
+                }
+              }
+              return next.size === prev.size ? prev : next
+            })
           }
         }
         break
@@ -345,7 +392,15 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           setBlocks(snap.recent_blocks)
         }
         if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
-          setTransactions(snap.latest_transactions.slice(0, FRONTEND_WORKING_SET_LIMIT))
+          const latestTxs = snap.latest_transactions
+          setTransactions((prev) => {
+            const map = new Map<string, LiveTransaction>()
+            prev.forEach((t) => map.set(t.txid, t))
+            latestTxs.forEach((t: LiveTransaction) => {
+              if (!map.has(t.txid)) map.set(t.txid, t)
+            })
+            return Array.from(map.values()).slice(0, FRONTEND_WORKING_SET_LIMIT)
+          })
         }
         setErrorMessage('')
       } catch (err: unknown) {
@@ -621,22 +676,42 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     }
   }, [densityMode])
 
-  // Transactions that arrived live during the current WebSocket session (Sections 2 & 3)
-  const liveSessionTransactions = useMemo(
-    () => transactions.filter((t) => liveSessionTxids.has(t.txid)),
-    [transactions, liveSessionTxids]
+  // Active visual window: 90 seconds (NORMAL/CALM low-density <= 80) or 120 seconds (higher density / DENSE)
+  // Never exceeds 120 seconds (Section 1)
+  const activeWindowSeconds = useMemo(() => {
+    if (densityMode === 'dense') return 120
+    const rawLiveCount = transactions.filter((t) => liveSessionTxids.has(t.txid)).length
+    if (rawLiveCount > 80) return 120
+    return 90
+  }, [densityMode, transactions, liveSessionTxids])
+
+  // Transactions from liveSessionTxids whose observed_at falls inside current active window (Section 1)
+  const activeLiveSessionTransactions = useMemo(() => {
+    return transactions.filter((t) => {
+      if (!liveSessionTxids.has(t.txid)) return false
+      const time = t.observed_at ?? t.first_seen_at
+      if (time === undefined || time === null) return true
+      const age = nowSeconds - time
+      return age <= activeWindowSeconds
+    })
+  }, [transactions, liveSessionTxids, nowSeconds, activeWindowSeconds])
+
+  // Set of actively animated live session txids for easy lookup
+  const activeLiveSessionTxids = useMemo(
+    () => new Set(activeLiveSessionTransactions.map((t) => t.txid)),
+    [activeLiveSessionTransactions]
   )
 
-  // Older / snapshot bootstrap transactions cached for inspection (Section 8)
+  // Older / snapshot bootstrap / expired transactions cached for inspection (Sections 6 & 8)
   const recentCachedTransactions = useMemo(
-    () => transactions.filter((t) => !liveSessionTxids.has(t.txid)),
-    [transactions, liveSessionTxids]
+    () => transactions.filter((t) => !activeLiveSessionTxids.has(t.txid)),
+    [transactions, activeLiveSessionTxids]
   )
 
-  // Animated live stream nodes: bounded by densityLimit (80 / 180 / 300) applied to live session arrivals
+  // Animated live stream nodes: bounded by densityLimit (80 / 180 / 300) applied to active live session arrivals
   const visibleLiveTransactions = useMemo(
-    () => liveSessionTransactions.slice(0, densityLimit),
-    [liveSessionTransactions, densityLimit]
+    () => activeLiveSessionTransactions.slice(0, densityLimit),
+    [activeLiveSessionTransactions, densityLimit]
   )
   const timeStampedTxs = useMemo(
     () => visibleLiveTransactions.filter(
@@ -664,10 +739,9 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   }, [timeStampedTxs, streamReferenceTime])
 
   const preferredWindow = useMemo(() => {
-    // Primary Live Flow represents recent observation activity: 90s or 120s max
-    if (timeStampedTxs.length > 80) return 120
-    return 90
-  }, [timeStampedTxs.length])
+    // Primary Live Flow represents recent observation activity: 90s or 120s max (Section 1)
+    return activeWindowSeconds
+  }, [activeWindowSeconds])
 
   const adaptiveWindow = useMemo(() => {
     return getAdaptiveTimeWindow(maxTxAge, preferredWindow)
@@ -1324,6 +1398,17 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     onClick={() => {
                       triggerElementRef.current = document.activeElement as HTMLElement
                       setSelectedTx(tx)
+                    }}
+                    onAnimationEnd={(e) => {
+                      // Only react to live-stream-drift animation completion (Section 4)
+                      if (e.animationName === 'live-stream-drift') {
+                        setLiveSessionTxids((prev) => {
+                          if (!prev.has(tx.txid)) return prev
+                          const next = new Set(prev)
+                          next.delete(tx.txid)
+                          return next
+                        })
+                      }
                     }}
                     aria-label={`Transaction ${truncateHash(tx.txid, 6, 6)}, ${displayVsize}, ${
                       tx.fee_rate !== undefined && tx.fee_rate !== null

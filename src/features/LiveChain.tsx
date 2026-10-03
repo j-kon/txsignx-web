@@ -17,22 +17,14 @@ import {
   computeCollisionFreeLayout,
   formatBlockWeight,
   formatBlockSize,
+  formatRelativeTime,
+  getStableMotionTiming,
   FRONTEND_WORKING_SET_LIMIT,
 } from './liveStreamLayout'
 
 interface LiveChainProps {
   api: ApiClient
   onNavigateInspector?: () => void
-}
-
-function formatRelativeTime(timestamp?: number): string {
-  if (!timestamp) return 'Unknown'
-  const now = Math.floor(Date.now() / 1000)
-  const diff = now - timestamp
-  if (diff < 5) return 'Just now'
-  if (diff < 60) return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  return `${Math.floor(diff / 3600)}h ago`
 }
 
 function formatUtcTime(timestamp?: number): string {
@@ -112,8 +104,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   // Animated TIP flash state when new block connects
   const [newlyConnectedBlockHash, setNewlyConnectedBlockHash] = useState<string | null>(null)
 
-  // Clock tick for Live Flow time stream positioning (ticks every 1s)
+  // Clock tick for textual relative-time updates (ticks every 1s; does NOT mutate CSS animation timing)
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
+
+  // Reference time for stream coordinate calculations; updated when transaction sets arrive
+  const [streamReferenceTime, setStreamReferenceTime] = useState(() => Math.floor(Date.now() / 1000))
 
   // Track new txids for one-time arrival animation
   const [newTxids, setNewTxids] = useState<Set<string>>(new Set())
@@ -192,6 +187,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         const snap = event.data
         if (snap) {
           setSnapshot(snap)
+          setStreamReferenceTime(Math.floor(Date.now() / 1000))
           if (snap.recent_blocks !== undefined && snap.recent_blocks !== null) {
             setBlocks(snap.recent_blocks)
           }
@@ -204,6 +200,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       case 'transaction_added': {
         const tx = event.data
         if (tx && tx.txid) {
+          setStreamReferenceTime(Math.floor(Date.now() / 1000))
           setNewTxids((prev) => new Set(prev).add(tx.txid))
           setTransactions((prev) => {
             if (prev.some((t) => t.txid === tx.txid)) return prev
@@ -327,6 +324,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         const snap = await api.liveSnapshot()
         if (!activeRef.current) return
         setSnapshot(snap)
+        setStreamReferenceTime(Math.floor(Date.now() / 1000))
         if (snap.recent_blocks !== undefined && snap.recent_blocks !== null) {
           setBlocks(snap.recent_blocks)
         }
@@ -632,11 +630,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     if (timeStampedTxs.length === 0) return 0
     return Math.max(
       ...timeStampedTxs.map((t) => {
-        const time = t.observed_at ?? t.first_seen_at ?? nowSeconds
-        return Math.max(0, nowSeconds - time)
+        const time = t.observed_at ?? t.first_seen_at ?? streamReferenceTime
+        return Math.max(0, streamReferenceTime - time)
       })
     )
-  }, [timeStampedTxs, nowSeconds])
+  }, [timeStampedTxs, streamReferenceTime])
 
   const preferredWindow = useMemo(() => {
     if (timeStampedTxs.length > 100 && maxTxAge <= 30) return 30
@@ -649,8 +647,8 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   }, [maxTxAge, preferredWindow])
 
   const layoutMap = useMemo(() => {
-    return computeCollisionFreeLayout(timeStampedTxs, adaptiveWindow.windowSeconds, nowSeconds)
-  }, [timeStampedTxs, adaptiveWindow.windowSeconds, nowSeconds])
+    return computeCollisionFreeLayout(timeStampedTxs, adaptiveWindow.windowSeconds, streamReferenceTime)
+  }, [timeStampedTxs, adaptiveWindow.windowSeconds, streamReferenceTime])
 
   // If viewing full report, display ReportView with breadcrumb bar
   if (activeReport) {
@@ -981,7 +979,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         )}
                       </div>
                       <span className="block-time-ago">
-                        {formatRelativeTime(block.timestamp)}
+                        {formatRelativeTime(block.timestamp, nowSeconds)}
                       </span>
                     </div>
 
@@ -1210,6 +1208,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               {/* Positioned Transaction Nodes (bounded by densityMode) */}
               {timeStampedTxs.map((tx) => {
                 const layout = layoutMap.get(tx.txid) || {
+                  txid: tx.txid,
                   leftPercent: 50,
                   topPercent: 50,
                   visualOffsetX: 0,
@@ -1221,6 +1220,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                   bobDuration: 4.5,
                   bobDelay: 0,
                 }
+
                 const isRbf = tx.explicit_rbf === true
                 const hasWitness = tx.has_witness === true
                 const isSelected = selectedTx?.txid === tx.txid
@@ -1235,10 +1235,15 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 const displayVsize =
                   tx.vsize !== undefined && tx.vsize !== null ? `${tx.vsize} vB` : 'vsize: Pending'
 
-                const observedTime = tx.observed_at ?? tx.first_seen_at ?? nowSeconds
-                const ageSeconds = Math.max(0, nowSeconds - observedTime)
-                const streamDuration = adaptiveWindow.windowSeconds
-                const streamDelay = -Math.min(streamDuration, ageSeconds)
+                const motion = getStableMotionTiming(
+                  tx.txid,
+                  tx.observed_at ?? tx.first_seen_at,
+                  adaptiveWindow.windowSeconds,
+                  streamReferenceTime,
+                  isNew
+                )
+                const streamDuration = motion.streamDuration
+                const streamDelay = motion.streamDelay
 
                 return (
                   <button
@@ -1322,7 +1327,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                       </div>
                       <div className="tooltip-metrics-row">
                         <span className="tooltip-age" title="Observed by TxSignX">
-                          Observed by TxSignX: {formatRelativeTime(tx.observed_at ?? tx.first_seen_at)}
+                          Observed by TxSignX: {formatRelativeTime(tx.observed_at ?? tx.first_seen_at, nowSeconds)}
                         </span>
                         <span className="tooltip-sep">·</span>
                         <span className="tooltip-vsize">{displayVsize}</span>
@@ -1635,7 +1640,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     <div className="drawer-stat-item col-span-2">
                       <span className="stat-label">Block Timestamp</span>
                       <span className="stat-val mono" style={{ fontSize: '13px' }}>
-                        {formatUtcTime(blockDetailsData.timestamp)} ({formatRelativeTime(blockDetailsData.timestamp)})
+                        {formatUtcTime(blockDetailsData.timestamp)} ({formatRelativeTime(blockDetailsData.timestamp, nowSeconds)})
                       </span>
                     </div>
                   </div>
@@ -1969,7 +1974,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 <div className="drawer-stat-item">
                   <span className="stat-label">Observed At</span>
                   <span className="stat-val mono" style={{ fontSize: '12px' }}>
-                    {formatRelativeTime(selectedTx.observed_at ?? selectedTx.first_seen_at)}
+                    {formatRelativeTime(selectedTx.observed_at ?? selectedTx.first_seen_at, nowSeconds)}
                   </span>
                 </div>
                 <div className="drawer-stat-item">

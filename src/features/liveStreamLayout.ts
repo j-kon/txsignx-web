@@ -134,7 +134,8 @@ export function getVisualOffset(txid: string): {
 export function computeCollisionFreeLayout(
   transactions: LiveTransaction[],
   windowSeconds: number,
-  nowSeconds: number
+  nowSeconds: number,
+  existingLayout?: Map<string, PlacedNodeLayout>
 ): Map<string, PlacedNodeLayout> {
   const result = new Map<string, PlacedNodeLayout>()
   if (!transactions || transactions.length === 0) return result
@@ -205,7 +206,17 @@ export function computeCollisionFreeLayout(
     let topPercent = 50
     let isOverflow = false
 
-    if (densityTier === 'large') {
+    const prevPlaced = existingLayout?.get(tx.txid)
+    if (
+      prevPlaced &&
+      prevPlaced.densityTier === densityTier &&
+      prevPlaced.lane >= 0 &&
+      prevPlaced.lane < laneTops.length
+    ) {
+      chosenLane = prevPlaced.lane
+      topPercent = prevPlaced.topPercent
+      isOverflow = prevPlaced.isOverflow
+    } else if (densityTier === 'large') {
       // Find first lane among 0..4 without horizontal collision
       for (let l = 0; l < 5; l++) {
         const hasCollision = lanes[l].some(
@@ -295,7 +306,7 @@ export function computeCollisionFreeLayout(
     }
 
     lanes[chosenLane].push({ txid: tx.txid, leftPercent, topPercent, sizePx })
-    result.set(tx.txid, {
+    const placedLayout: PlacedNodeLayout = {
       txid: tx.txid,
       leftPercent,
       topPercent,
@@ -307,11 +318,14 @@ export function computeCollisionFreeLayout(
       densityTier,
       bobDuration: visualOffset.bobDuration,
       bobDelay: visualOffset.bobDelay,
-    })
+    }
+    result.set(tx.txid, placedLayout)
   })
 
   return result
 }
+
+
 
 export const FRONTEND_WORKING_SET_LIMIT = 350
 
@@ -325,4 +339,83 @@ export function formatBlockSize(size: number | null | undefined): string {
   if (size === null || size === undefined) return '—'
   const kb = size / 1000
   return `${kb.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kB`
+}
+
+export function formatRelativeTime(
+  timestamp?: number,
+  nowSec = Math.floor(Date.now() / 1000)
+): string {
+  if (!timestamp) return 'Unknown'
+  const diff = Math.max(0, nowSec - timestamp)
+  if (diff < 5) return 'Just now'
+  if (diff < 60) return `${diff}s ago`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  return `${Math.floor(diff / 3600)}h ago`
+}
+
+export interface StableMotionTiming {
+  streamDelay: number
+  streamDuration: number
+  anchorWallClock: number
+}
+
+// Module-scoped stable motion memoization cache keyed by (txid, observed_at, windowBucket)
+export const motionTimingCache = new Map<string, StableMotionTiming>()
+
+export function clearMotionTimingCache(): void {
+  motionTimingCache.clear()
+}
+
+export function getStableMotionTiming(
+  txid: string,
+  observedAt: number | undefined,
+  windowSeconds: number,
+  referenceNow: number,
+  isNew = false
+): StableMotionTiming {
+  const cacheKey = `${txid}:${observedAt ?? 0}:${windowSeconds}`
+  const existing = motionTimingCache.get(cacheKey)
+  if (existing) {
+    return existing
+  }
+
+  // Check if an entry exists for this txid in another window bucket to preserve progress
+  let initialDelay: number
+
+  let priorAnchor: StableMotionTiming | undefined
+  for (const [key, entry] of motionTimingCache.entries()) {
+    if (key.startsWith(`${txid}:`)) {
+      priorAnchor = entry
+      break
+    }
+  }
+
+  if (priorAnchor && priorAnchor.streamDuration !== windowSeconds) {
+    // Preserve visual progress across intentional window bucket transitions
+    const elapsed = Math.max(0, referenceNow - priorAnchor.anchorWallClock - priorAnchor.streamDelay)
+    const progress = Math.min(1.0, Math.max(0, elapsed / priorAnchor.streamDuration))
+    initialDelay = -Math.min(windowSeconds, progress * windowSeconds)
+  } else if (isNew) {
+    initialDelay = 0
+  } else {
+    const ageSeconds = Math.max(0, referenceNow - (observedAt ?? referenceNow))
+    initialDelay = -Math.min(windowSeconds, ageSeconds)
+  }
+
+  const timing: StableMotionTiming = {
+    streamDelay: initialDelay,
+    streamDuration: windowSeconds,
+    anchorWallClock: referenceNow,
+  }
+  motionTimingCache.set(cacheKey, timing)
+
+  // Bounded cache maintenance to prevent unbounded memory growth
+  if (motionTimingCache.size > 2000) {
+    const keysToDelete = Array.from(motionTimingCache.keys()).slice(0, 500)
+    for (const k of keysToDelete) {
+      motionTimingCache.delete(k)
+    }
+  }
+
+  return timing
 }

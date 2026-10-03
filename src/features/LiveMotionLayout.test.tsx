@@ -2,7 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import App from '../App'
-import { getVisualOffset, computeCollisionFreeLayout } from './liveStreamLayout'
+import {
+  getVisualOffset,
+  computeCollisionFreeLayout,
+  getStableMotionTiming,
+  clearMotionTimingCache,
+  getAdaptiveTimeWindow,
+} from './liveStreamLayout'
 import type { LiveTransaction } from '../lib/api/schema'
 import pass from '../test/fixtures/pass.json'
 
@@ -97,6 +103,7 @@ class MockWebSocket {
 describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
   beforeEach(() => {
     window.location.hash = '#live'
+    clearMotionTimingCache()
     MockWebSocket.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket)
     vi.stubGlobal(
@@ -123,10 +130,12 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
   })
 
   afterEach(() => {
+    clearMotionTimingCache()
     cleanup()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
+
 
   it('same-second transactions receive distinct visual offsets', () => {
     const txidA = '1111111111111111111111111111111111111111111111111111111111111111'
@@ -308,5 +317,137 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
     expect(css).toContain('animation: none !important')
     expect(css).toContain('transition: none !important')
     expect(css).toContain('var(--static-left, 50%)')
+  })
+
+  it('advancing nowSeconds does NOT change a mounted transaction animation-delay', () => {
+    const txid = 'abcd000100000000000000000000000000000000000000000000000000000000'
+    const observedAt = 1700000000
+    const initialNow = 1700000020
+    const windowSeconds = 60
+
+    const timing0 = getStableMotionTiming(txid, observedAt, windowSeconds, initialNow, false)
+    expect(timing0.streamDelay).toBe(-20)
+    expect(timing0.streamDuration).toBe(60)
+
+    // Simulate nowSeconds advancing 1s, 2s, 10s later
+    const timing1 = getStableMotionTiming(txid, observedAt, windowSeconds, initialNow + 1, false)
+    const timing2 = getStableMotionTiming(txid, observedAt, windowSeconds, initialNow + 2, false)
+    const timing10 = getStableMotionTiming(txid, observedAt, windowSeconds, initialNow + 10, false)
+
+    expect(timing1.streamDelay).toBe(-20)
+    expect(timing2.streamDelay).toBe(-20)
+    expect(timing10.streamDelay).toBe(-20)
+    expect(timing1.streamDuration).toBe(60)
+    expect(timing10.streamDuration).toBe(60)
+  })
+
+  it('advancing nowSeconds does NOT restart animation', async () => {
+    render(<App />)
+    const targetTxid = '1111111111111111111111111111111111111111111111111111111111111111'
+    await waitFor(() => {
+      expect(document.querySelector(`[data-txid="${targetTxid}"]`)).toBeTruthy()
+    })
+
+    const node = document.querySelector(`[data-txid="${targetTxid}"]`) as HTMLElement
+    const initialDelay = node.style.getPropertyValue('--stream-delay')
+    const initialDuration = node.style.getPropertyValue('--stream-duration')
+
+    expect(initialDelay).toBeTruthy()
+    expect(initialDuration).toBeTruthy()
+
+    // Wait for 1.2 seconds so nowSeconds timer ticks in the component
+    await new Promise((r) => setTimeout(r, 1200))
+
+    const nodeAfterTick = document.querySelector(`[data-txid="${targetTxid}"]`) as HTMLElement
+    expect(nodeAfterTick.style.getPropertyValue('--stream-delay')).toBe(initialDelay)
+    expect(nodeAfterTick.style.getPropertyValue('--stream-duration')).toBe(initialDuration)
+  })
+
+  it('transaction_added receives stable initial delay near 0', () => {
+    const newTxid = 'new_tx_0000000000000000000000000000000000000000000000000000000000'
+    const arrivalTime = 1700000050
+    const timing = getStableMotionTiming(newTxid, arrivalTime, 60, arrivalTime, true)
+
+    expect(timing.streamDelay).toBe(0)
+    expect(timing.streamDuration).toBe(60)
+
+    // Next second tick
+    const timingNext = getStableMotionTiming(newTxid, arrivalTime, 60, arrivalTime + 1, false)
+    expect(timingNext.streamDelay).toBe(0)
+  })
+
+  it('older snapshot transaction receives one initial negative delay matching age', () => {
+    const snapTxid = 'snap_old_00000000000000000000000000000000000000000000000000000000'
+    const observedAt = 1700000000
+    const mountTime = 1700000030 // 30 seconds old
+    const timing = getStableMotionTiming(snapTxid, observedAt, 60, mountTime, false)
+
+    expect(timing.streamDelay).toBe(-30)
+    expect(timing.streamDuration).toBe(60)
+  })
+
+  it('observed_at and first_seen_at remain unchanged and authentic', async () => {
+    render(<App />)
+    await waitFor(() => {
+      expect(document.querySelector('[data-txid="1111111111111111111111111111111111111111111111111111111111111111"]')).toBeTruthy()
+    })
+
+    expect(mockSnapshot.latest_transactions[0].observed_at).toBe(1700000000)
+    expect(mockSnapshot.latest_transactions[1].observed_at).toBe(1700000000)
+    expect(mockSnapshot.latest_transactions[2].observed_at).toBe(1700000000)
+  })
+
+  it('hover pause/resume preserves stable animation timing without jumping', async () => {
+    const proc = (globalThis as unknown as { process?: { getBuiltinModule?: (m: string) => { readFileSync: (p: string, enc: string) => string } } }).process
+    const fs = proc?.getBuiltinModule?.('fs')
+    const css = fs?.readFileSync('src/index.css', 'utf-8') ?? ''
+
+    // Verifies CSS pause on hover
+    expect(css).toMatch(/\.stream-tx-node:hover[\s\S]*?animation-play-state:\s*paused/)
+    expect(css).toMatch(/\.stream-tx-node\.selected[\s\S]*?animation-play-state:\s*paused/)
+
+    render(<App />)
+    const targetTxid = '2222222222222222222222222222222222222222222222222222222222222222'
+    await waitFor(() => {
+      expect(document.querySelector(`[data-txid="${targetTxid}"]`)).toBeTruthy()
+    })
+
+    const node = document.querySelector(`[data-txid="${targetTxid}"]`) as HTMLElement
+    const delayBefore = node.style.getPropertyValue('--stream-delay')
+
+    // Simulate hover and passage of time
+    node.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 1100))
+
+    // Re-check delay while paused
+    expect(node.style.getPropertyValue('--stream-delay')).toBe(delayBefore)
+
+    // Simulate mouseleave
+    node.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+    expect(node.style.getPropertyValue('--stream-delay')).toBe(delayBefore)
+  })
+
+  it('adaptive window does not churn every second and preserves progress across transitions', () => {
+    // Stable window buckets
+    const win1 = getAdaptiveTimeWindow(25)
+    const win2 = getAdaptiveTimeWindow(26)
+    const win3 = getAdaptiveTimeWindow(59)
+    expect(win1.windowSeconds).toBe(60)
+    expect(win2.windowSeconds).toBe(60)
+    expect(win3.windowSeconds).toBe(60)
+
+    // Preserves visual progress across intentional window bucket transitions
+    const txid = 'tx_window_prog_0000000000000000000000000000000000000000000000000'
+    const start = 1700000000
+    // Initially 30s progress into a 60s window (50% progress)
+    const t60 = getStableMotionTiming(txid, start, 60, start + 30, false)
+    expect(t60.streamDelay).toBe(-30)
+    expect(t60.streamDuration).toBe(60)
+
+    // When transitioning to 120s window 0s after anchor
+    const t120 = getStableMotionTiming(txid, start, 120, start + 30, false)
+    expect(t120.streamDuration).toBe(120)
+    // 50% of 120s = -60s initial delay
+    expect(t120.streamDelay).toBe(-60)
   })
 })

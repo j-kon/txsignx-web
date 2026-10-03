@@ -253,6 +253,42 @@ describe('Section 23: Home Routing & Logo Navigation Tests', () => {
     expect(window.location.hash).toBe('#home')
   })
 
+  it('clicking logo while on Home uses behavior auto when reduced motion is preferred', async () => {
+    const scrollToMock = vi.fn()
+    window.scrollTo = scrollToMock
+
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('prefers-reduced-motion: reduce'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
+    try {
+      window.location.hash = '#home'
+      render(<App />)
+
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Bitcoin transaction security before signing.',
+        })
+      ).toBeTruthy()
+
+      const logo = screen.getByLabelText('TxSignX Home')
+      fireEvent.click(logo)
+
+      expect(scrollToMock).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
+      expect(window.location.hash).toBe('#home')
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
+  })
+
   it('Home hero CTA order has Explore Live Bitcoin as primary and Open Inspector as secondary', async () => {
     window.location.hash = '#home'
     render(<App />)

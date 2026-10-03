@@ -19,7 +19,10 @@ export function Header({page}:HeaderProps){
   const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (window.location.hash === '#home' || page === '#home') {
       e.preventDefault()
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+      window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' })
     } else {
       window.location.hash = '#home'
     }
@@ -28,7 +31,10 @@ export function Header({page}:HeaderProps){
   const handleNavClick = (targetHash: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (window.location.hash === targetHash || page === targetHash) {
       e.preventDefault()
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+      window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' })
     } else {
       window.location.hash = targetHash
     }

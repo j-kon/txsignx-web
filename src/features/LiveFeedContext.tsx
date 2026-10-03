@@ -341,8 +341,24 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
       }
     }
 
+    const scheduleReconnect = (delayMs: number) => {
+      if (!activeRef.current) return
+      if (reconnectTimeoutRef.current !== undefined) return
+
+      reconnectTimeoutRef.current = window.setTimeout(() => {
+        reconnectTimeoutRef.current = undefined
+        connectWs()
+      }, delayMs)
+    }
+
     const connectWs = () => {
       if (!activeRef.current) return
+      // Guard against duplicate sockets: refuse if existing socket is CONNECTING (0) or OPEN (1)
+      const readyState = wsRef.current?.readyState
+      if (readyState === 0 || readyState === 1) {
+        return
+      }
+
       try {
         const url = api.liveStreamUrl()
         const ws = new WebSocket(url)
@@ -350,11 +366,19 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
 
         ws.onopen = () => {
           if (!activeRef.current) return
+          if (wsRef.current !== ws) return
+          // Clear any pending reconnect timer on successful open
+          if (reconnectTimeoutRef.current !== undefined) {
+            window.clearTimeout(reconnectTimeoutRef.current)
+            reconnectTimeoutRef.current = undefined
+          }
           setConnectionStatus('connected')
+          setErrorMessage('')
         }
 
         ws.onmessage = (e) => {
           if (!activeRef.current) return
+          if (wsRef.current !== ws) return
           try {
             const parsed = JSON.parse(e.data)
             const event = liveEventSchema.parse(parsed)
@@ -368,24 +392,27 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
 
         ws.onclose = () => {
           if (!activeRef.current) return
+          if (wsRef.current !== ws) return
+          wsRef.current = null
           setConnectionStatus('reconnecting')
-          reconnectTimeoutRef.current = window.setTimeout(connectWs, 2000)
+          scheduleReconnect(2000)
         }
 
         ws.onerror = () => {
           if (!activeRef.current) return
+          if (wsRef.current !== ws) return
           setConnectionStatus('error')
           try {
             ws.close()
           } catch {
             // ignore close error
           }
-          reconnectTimeoutRef.current = window.setTimeout(connectWs, 3000)
+          scheduleReconnect(2000)
         }
       } catch {
         if (!activeRef.current) return
         setConnectionStatus('error')
-        reconnectTimeoutRef.current = window.setTimeout(connectWs, 3000)
+        scheduleReconnect(3000)
       }
     }
 
@@ -396,6 +423,7 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
       activeRef.current = false
       if (reconnectTimeoutRef.current !== undefined) {
         window.clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = undefined
       }
       if (wsRef.current) {
         wsRef.current.onopen = null

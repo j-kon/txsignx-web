@@ -1376,6 +1376,12 @@ describe('Live Chain Observability Interface', () => {
       expect(css).toContain('@media (max-width: 768px)')
       expect(css).toContain('.live-chain-drawer')
       expect(css).toContain('width: 100%')
+
+      // Side drawer fixed viewport overlay rules
+      expect(css).toContain(':not(.drawer-overlay)')
+      expect(css).toContain('.drawer-overlay')
+      expect(css).toContain('position: fixed')
+      expect(css).toContain('justify-content: flex-end')
     })
 
     it('renders "—" or "Unavailable" for absent blockchain facts without fabricating values', async () => {

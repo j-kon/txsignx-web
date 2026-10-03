@@ -1501,6 +1501,8 @@ describe('Live Chain Observability Interface', () => {
       it('transaction node text does not contain oversized multi-line content', async () => {
         window.location.hash = '#live'
         render(<App />)
+        const calmBtn = await screen.findByRole('radio', { name: /Calm/i })
+        fireEvent.click(calmBtn)
         const node = await screen.findByText('7b055…1101')
         const button = node.closest('.stream-tx-node') as HTMLElement
         expect(button).toBeTruthy()

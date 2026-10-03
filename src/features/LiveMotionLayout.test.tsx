@@ -251,7 +251,9 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
     render(<App />)
 
     await waitFor(() => {
-      expect(document.querySelector('[data-txid="3333333333333333333333333333333333333333333333333333333333333333"]')).toBeTruthy()
+      const node = document.querySelector('[data-txid="3333333333333333333333333333333333333333333333333333333333333333"]')
+      expect(node).toBeTruthy()
+      expect(node?.classList.contains('pending-hydration')).toBe(true)
     })
 
     const pendingNode = document.querySelector('[data-txid="3333333333333333333333333333333333333333333333333333333333333333"]')

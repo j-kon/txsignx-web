@@ -21,6 +21,7 @@ import {
   getStableMotionTiming,
   FRONTEND_WORKING_SET_LIMIT,
 } from './liveStreamLayout'
+import { useLiveFeedOptional } from './LiveFeedContext'
 
 interface LiveChainProps {
   api: ApiClient
@@ -64,13 +65,51 @@ async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
-  const [snapshot, setSnapshot] = useState<LiveSnapshot | null>(null)
-  const [blocks, setBlocks] = useState<RecentBlock[]>([])
-  const [transactions, setTransactions] = useState<LiveTransaction[]>([])
-  const [connectionStatus, setConnectionStatus] = useState<
+  const liveFeed = useLiveFeedOptional()
+
+  // Local fallback states when LiveChain is mounted outside LiveFeedProvider (e.g. isolated component unit tests)
+  const [localSnapshot, setLocalSnapshot] = useState<LiveSnapshot | null>(null)
+  const [localBlocks, setLocalBlocks] = useState<RecentBlock[]>([])
+  const [localTransactions, setLocalTransactions] = useState<LiveTransaction[]>([])
+  const [localConnectionStatus, setLocalConnectionStatus] = useState<
     'connecting' | 'connected' | 'reconnecting' | 'error'
   >('connecting')
-  const [errorMessage, setErrorMessage] = useState('')
+  const [localErrorMessage, setLocalErrorMessage] = useState('')
+  const [localNewlyConnectedBlockHash, setLocalNewlyConnectedBlockHash] = useState<string | null>(null)
+  const [localNowSeconds, setLocalNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
+  const [localStreamReferenceTime, setLocalStreamReferenceTime] = useState(() => Math.floor(Date.now() / 1000))
+  const [localLiveSessionTxids, setLocalLiveSessionTxids] = useState<Set<string>>(() => new Set())
+  const [localNewTxids, setLocalNewTxids] = useState<Set<string>>(new Set())
+  const [localConfirmedTxids, setLocalConfirmedTxids] = useState<Set<string>>(new Set())
+  const [localRemovedTxids, setLocalRemovedTxids] = useState<Set<string>>(new Set())
+
+  // Consumer resolution: LiveFeedContext (persistent App) || local state (isolated unit tests)
+  const snapshot = liveFeed ? liveFeed.snapshot : localSnapshot
+  const blocks = liveFeed ? liveFeed.blocks : localBlocks
+  const transactions = liveFeed ? liveFeed.transactions : localTransactions
+  const connectionStatus = liveFeed ? liveFeed.connectionStatus : localConnectionStatus
+  const errorMessage = liveFeed ? liveFeed.errorMessage : localErrorMessage
+  const newlyConnectedBlockHash = liveFeed ? liveFeed.newlyConnectedBlockHash : localNewlyConnectedBlockHash
+  const nowSeconds = liveFeed ? liveFeed.nowSeconds : localNowSeconds
+  const streamReferenceTime = liveFeed ? liveFeed.streamReferenceTime : localStreamReferenceTime
+  const liveSessionTxids = liveFeed ? liveFeed.liveSessionTxids : localLiveSessionTxids
+  const newTxids = liveFeed ? liveFeed.newTxids : localNewTxids
+  const confirmedTxids = liveFeed ? liveFeed.confirmedTxids : localConfirmedTxids
+  const removedTxids = liveFeed ? liveFeed.removedTxids : localRemovedTxids
+
+  const removeLiveSessionTxid = useCallback((txid: string) => {
+    if (liveFeed) {
+      liveFeed.removeLiveSessionTxid(txid)
+    } else {
+      setLocalLiveSessionTxids((prev) => {
+        if (!prev.has(txid)) return prev
+        const next = new Set(prev)
+        next.delete(txid)
+        return next
+      })
+    }
+  }, [liveFeed])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [searchError, setSearchError] = useState('')
   const [viewMode, setViewMode] = useState<'flow' | 'graph'>('flow')
@@ -100,23 +139,6 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   const [activeReport, setActiveReport] = useState<Report | null>(null)
   const [reportLoading, setReportLoading] = useState(false)
   const [reportError, setReportError] = useState('')
-
-  // Animated TIP flash state when new block connects
-  const [newlyConnectedBlockHash, setNewlyConnectedBlockHash] = useState<string | null>(null)
-
-  // Clock tick for textual relative-time updates (ticks every 1s; does NOT mutate CSS animation timing)
-  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
-
-  // Reference time for stream coordinate calculations; updated when transaction sets arrive
-  const [streamReferenceTime, setStreamReferenceTime] = useState(() => Math.floor(Date.now() / 1000))
-
-  // Bounded live-session transactions set: strictly populated via WebSocket transaction_added
-  const [liveSessionTxids, setLiveSessionTxids] = useState<Set<string>>(() => new Set())
-
-  // Track new txids for one-time arrival animation
-  const [newTxids, setNewTxids] = useState<Set<string>>(new Set())
-  const [confirmedTxids, setConfirmedTxids] = useState<Set<string>>(new Set())
-  const [removedTxids, setRemovedTxids] = useState<Set<string>>(new Set())
 
   const activeRef = useRef(true)
   const wsRef = useRef<WebSocket | null>(null)
@@ -166,14 +188,34 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     transactionsRef.current = transactions
   }, [transactions])
 
-  // 1-second textual relative-time tick & periodic expiry cleanup (Sections 3 & 5)
-  // Only updates textual age strings and prunes expired IDs (>120s or evicted);
-  // does NOT touch CSS animation delay/duration
+  // Keep selectedTx in sync with live transaction updates
   useEffect(() => {
+    if (selectedTx) {
+      const updated = transactions.find((t) => t.txid === selectedTx.txid)
+      if (updated && (updated.vsize !== selectedTx.vsize || updated.fee_rate !== selectedTx.fee_rate || updated.hydration_status !== selectedTx.hydration_status)) {
+        // oxlint-disable-next-line react/set-state-in-effect
+        setSelectedTx(updated)
+      }
+    }
+  }, [transactions, selectedTx])
+
+  // Smoothly scroll to new tip if user is not inspecting older blocks
+  useEffect(() => {
+    if (newlyConnectedBlockHash && !userScrolledHistoricalRef.current) {
+      const timer = setTimeout(() => {
+        scrollToTip(true)
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [newlyConnectedBlockHash, scrollToTip])
+
+  // 1-second textual relative-time tick & periodic expiry cleanup for standalone fallback
+  useEffect(() => {
+    if (liveFeed) return
     const timer = setInterval(() => {
       const now = Math.floor(Date.now() / 1000)
-      setNowSeconds(now)
-      setLiveSessionTxids((prev) => {
+      setLocalNowSeconds(now)
+      setLocalLiveSessionTxids((prev) => {
         if (prev.size === 0) return prev
         const currentTxs = transactionsRef.current
         const txMap = new Map(currentTxs.map((t) => [t.txid, t]))
@@ -196,7 +238,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       })
     }, 1000)
     return () => clearInterval(timer)
-  }, [])
+  }, [liveFeed])
 
   // Keyboard shortcut: Cmd+K / Ctrl+K to focus search input
   useEffect(() => {
@@ -210,26 +252,25 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Handle validated live incoming events
+  // Handle validated live incoming events (standalone fallback)
   const handleEvent = (event: LiveEvent) => {
-    if (!activeRef.current) return
+    if (liveFeed || !activeRef.current) return
 
     switch (event.type) {
       case 'snapshot': {
         const snap = event.data
         if (snap) {
-          setSnapshot(snap)
-          setStreamReferenceTime(Math.floor(Date.now() / 1000))
+          setLocalSnapshot(snap)
+          setLocalStreamReferenceTime(Math.floor(Date.now() / 1000))
           if (snap.recent_blocks !== undefined && snap.recent_blocks !== null) {
-            setBlocks(snap.recent_blocks)
+            setLocalBlocks(snap.recent_blocks)
           }
           if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
             const nextTxs = snap.latest_transactions.slice(0, FRONTEND_WORKING_SET_LIMIT)
-            setTransactions(nextTxs)
-            // Intersect liveSessionTxids with transactions still present and inside the active live window (Section 5)
+            setLocalTransactions(nextTxs)
             const now = Math.floor(Date.now() / 1000)
             const presentTxMap = new Map(nextTxs.map((t) => [t.txid, t]))
-            setLiveSessionTxids((prev) => {
+            setLocalLiveSessionTxids((prev) => {
               if (prev.size === 0) return prev
               const next = new Set<string>()
               for (const id of prev) {
@@ -250,19 +291,18 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       case 'transaction_added': {
         const tx = event.data
         if (tx && tx.txid) {
-          setStreamReferenceTime(Math.floor(Date.now() / 1000))
-          setNewTxids((prev) => new Set(prev).add(tx.txid))
-          setLiveSessionTxids((prev) => new Set(prev).add(tx.txid))
-          setTransactions((prev) => {
+          setLocalStreamReferenceTime(Math.floor(Date.now() / 1000))
+          setLocalNewTxids((prev) => new Set(prev).add(tx.txid))
+          setLocalLiveSessionTxids((prev) => new Set(prev).add(tx.txid))
+          setLocalTransactions((prev) => {
             if (prev.some((t) => t.txid === tx.txid)) {
               return prev.map((t) => (t.txid === tx.txid ? { ...t, ...tx } : t))
             }
             return [tx, ...prev].slice(0, FRONTEND_WORKING_SET_LIMIT)
           })
-          // Remove arrival highlight tag after 600ms
           setTimeout(() => {
             if (activeRef.current) {
-              setNewTxids((prev) => {
+              setLocalNewTxids((prev) => {
                 const updated = new Set(prev)
                 updated.delete(tx.txid)
                 return updated
@@ -275,7 +315,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       case 'transaction_updated': {
         const updatedTx = event.data
         if (updatedTx && updatedTx.txid) {
-          setTransactions((prev) =>
+          setLocalTransactions((prev) =>
             prev.map((t) => (t.txid === updatedTx.txid ? { ...t, ...updatedTx } : t))
           )
           setSelectedTx((prev) =>
@@ -287,16 +327,16 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       case 'transaction_removed': {
         const payload = event.data
         if (payload?.txid) {
-          setRemovedTxids((prev) => new Set(prev).add(payload.txid))
+          setLocalRemovedTxids((prev) => new Set(prev).add(payload.txid))
           setTimeout(() => {
             if (activeRef.current) {
-              setTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
-              setLiveSessionTxids((prev) => {
+              setLocalTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
+              setLocalLiveSessionTxids((prev) => {
                 const next = new Set(prev)
                 next.delete(payload.txid)
                 return next
               })
-              setRemovedTxids((prev) => {
+              setLocalRemovedTxids((prev) => {
                 const next = new Set(prev)
                 next.delete(payload.txid)
                 return next
@@ -309,16 +349,16 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       case 'transaction_confirmed': {
         const payload = event.data
         if (payload?.txid) {
-          setConfirmedTxids((prev) => new Set(prev).add(payload.txid))
+          setLocalConfirmedTxids((prev) => new Set(prev).add(payload.txid))
           setTimeout(() => {
             if (activeRef.current) {
-              setTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
-              setLiveSessionTxids((prev) => {
+              setLocalTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
+              setLocalLiveSessionTxids((prev) => {
                 const next = new Set(prev)
                 next.delete(payload.txid)
                 return next
               })
-              setConfirmedTxids((prev) => {
+              setLocalConfirmedTxids((prev) => {
                 const next = new Set(prev)
                 next.delete(payload.txid)
                 return next
@@ -331,24 +371,22 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       case 'block_connected': {
         const block = event.data
         if (block && block.height !== undefined) {
-          setNewlyConnectedBlockHash(block.hash)
-          setBlocks((prev) => {
+          setLocalNewlyConnectedBlockHash(block.hash)
+          setLocalBlocks((prev) => {
             if (prev.some((b) => b.height === block.height)) return prev
             return [block, ...prev].slice(0, 6)
           })
-          setSnapshot((prev) =>
+          setLocalSnapshot((prev) =>
             prev ? { ...prev, tip_height: block.height, tip_hash: block.hash } : null
           )
-          // Smoothly scroll to new tip if user is not inspecting older blocks
           if (!userScrolledHistoricalRef.current) {
             setTimeout(() => {
               scrollToTip(true)
             }, 50)
           }
-          // Soft flash for 2.5s on new tip
           setTimeout(() => {
             if (activeRef.current) {
-              setNewlyConnectedBlockHash(null)
+              setLocalNewlyConnectedBlockHash(null)
             }
           }, 2500)
         }
@@ -357,7 +395,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       case 'mempool_updated': {
         const mempool = event.data
         if (mempool) {
-          setSnapshot((prev) =>
+          setLocalSnapshot((prev) =>
             prev
               ? {
                   ...prev,
@@ -378,22 +416,23 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     handleEventRef.current = handleEvent
   })
 
-  // Load initial snapshot and maintain WebSocket connection
+  // Load initial snapshot and maintain WebSocket connection (standalone fallback)
   useEffect(() => {
+    if (liveFeed) return
     activeRef.current = true
 
     const loadInitialSnapshot = async () => {
       try {
         const snap = await api.liveSnapshot()
         if (!activeRef.current) return
-        setSnapshot(snap)
-        setStreamReferenceTime(Math.floor(Date.now() / 1000))
+        setLocalSnapshot(snap)
+        setLocalStreamReferenceTime(Math.floor(Date.now() / 1000))
         if (snap.recent_blocks !== undefined && snap.recent_blocks !== null) {
-          setBlocks(snap.recent_blocks)
+          setLocalBlocks(snap.recent_blocks)
         }
         if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
           const latestTxs = snap.latest_transactions
-          setTransactions((prev) => {
+          setLocalTransactions((prev) => {
             const map = new Map<string, LiveTransaction>()
             prev.forEach((t) => map.set(t.txid, t))
             latestTxs.forEach((t: LiveTransaction) => {
@@ -402,12 +441,12 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             return Array.from(map.values()).slice(0, FRONTEND_WORKING_SET_LIMIT)
           })
         }
-        setErrorMessage('')
+        setLocalErrorMessage('')
       } catch (err: unknown) {
         if (!activeRef.current) return
         const msg = err instanceof Error ? err.message : 'Could not reach Bitcoin Core node.'
-        setErrorMessage(msg)
-        setConnectionStatus('error')
+        setLocalErrorMessage(msg)
+        setLocalConnectionStatus('error')
       }
     }
 
@@ -420,7 +459,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
 
         ws.onopen = () => {
           if (!activeRef.current) return
-          setConnectionStatus('connected')
+          setLocalConnectionStatus('connected')
         }
 
         ws.onmessage = (e) => {
@@ -438,17 +477,17 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
 
         ws.onclose = () => {
           if (!activeRef.current) return
-          setConnectionStatus('reconnecting')
+          setLocalConnectionStatus('reconnecting')
           reconnectTimeoutRef.current = window.setTimeout(connectWs, 2000)
         }
 
         ws.onerror = () => {
           if (!activeRef.current) return
-          setConnectionStatus('reconnecting')
+          setLocalConnectionStatus('reconnecting')
         }
       } catch {
         if (activeRef.current) {
-          setConnectionStatus('reconnecting')
+          setLocalConnectionStatus('reconnecting')
           reconnectTimeoutRef.current = window.setTimeout(connectWs, 3000)
         }
       }
@@ -462,7 +501,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
       if (wsRef.current) wsRef.current.close()
     }
-  }, [api])
+  }, [api, liveFeed])
 
   // Handle universal TXID search
   const handleSearch = async (e: FormEvent) => {
@@ -1332,12 +1371,16 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                   txid: tx.txid,
                   leftPercent: 50,
                   topPercent: 50,
+                  startY: 50,
+                  endY: 50,
+                  trajectoryDeltaY: 0,
                   visualOffsetX: 0,
                   visualOffsetY: 0,
+                  visualPhaseSeconds: 0,
                   lane: 0,
-                  sizePx: 48,
+                  sizePx: densityMode === 'calm' ? 24 : densityMode === 'normal' ? 11 : 8,
                   isOverflow: false,
-                  densityTier: 'large' as const,
+                  densityTier: densityMode === 'calm' ? ('large' as const) : densityMode === 'normal' ? ('medium' as const) : ('compact' as const),
                   bobDuration: 4.5,
                   bobDelay: 0,
                 }
@@ -1350,6 +1393,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 const isRemoved = removedTxids.has(tx.txid)
                 const isCompact = layout.densityTier === 'compact'
                 const isMedium = layout.densityTier === 'medium'
+                const isParticleMode = densityMode === 'normal' || densityMode === 'dense'
 
                 const isPending =
                   tx.vsize === undefined || tx.vsize === null || tx.hydration_status === 'pending'
@@ -1361,10 +1405,12 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                   tx.observed_at ?? tx.first_seen_at,
                   adaptiveWindow.windowSeconds,
                   streamReferenceTime,
-                  isNew
+                  isNew,
+                  densityMode
                 )
                 const streamDuration = motion.streamDuration
                 const streamDelay = motion.streamDelay
+                const driftDeltaY = ((layout.trajectoryDeltaY / 100) * 360).toFixed(2)
 
                 return (
                   <button
@@ -1387,6 +1433,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         '--stream-duration': `${streamDuration}s`,
                         '--stream-delay': `${streamDelay}s`,
                         '--stream-drift-span': `88cqi`,
+                        '--drift-delta-y': `${driftDeltaY}px`,
                         '--static-left': `${layout.leftPercent}%`,
                         '--node-y': `${layout.topPercent}%`,
                         '--visual-offset-x': `${layout.visualOffsetX}%`,
@@ -1400,14 +1447,9 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                       setSelectedTx(tx)
                     }}
                     onAnimationEnd={(e) => {
-                      // Only react to live-stream-drift animation completion (Section 4)
+                      // Only react to live-stream-drift animation completion
                       if (e.animationName === 'live-stream-drift') {
-                        setLiveSessionTxids((prev) => {
-                          if (!prev.has(tx.txid)) return prev
-                          const next = new Set(prev)
-                          next.delete(tx.txid)
-                          return next
-                        })
+                        removeLiveSessionTxid(tx.txid)
                       }
                     }}
                     aria-label={`Transaction ${truncateHash(tx.txid, 6, 6)}, ${displayVsize}, ${
@@ -1425,24 +1467,29 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                   >
                     {/* Subtle organic bobbing wrapper */}
                     <div className="node-organic-bob">
-                      {/* Clean inner orb: only shown for medium and large tiers */}
-                      {!isCompact && (
-                        <div className="node-orb-inner">
-                          <span className="node-vsize-num">{isPending ? '…' : tx.vsize}</span>
-                          {!isMedium && !isPending && <span className="node-vsize-unit">vB</span>}
-                        </div>
+                      {/* CALM mode: informative larger nodes with inline vsize and badges */}
+                      {!isParticleMode && (
+                        <>
+                          <div className="node-orb-inner">
+                            <span className="node-vsize-num">{isPending ? '…' : tx.vsize}</span>
+                            {!isPending && <span className="node-vsize-unit">vB</span>}
+                          </div>
+                          {hasWitness && (
+                            <span className="node-segwit-dot" title="SegWit witness data present">
+                              W
+                            </span>
+                          )}
+                          {isRbf && (
+                            <span className="node-rbf-badge" title="BIP 125 Explicit RBF">
+                              RBF
+                            </span>
+                          )}
+                        </>
                       )}
 
-                      {/* Outside badges: only in large tier */}
-                      {!isCompact && !isMedium && hasWitness && (
-                        <span className="node-segwit-dot" title="SegWit witness data present">
-                          W
-                        </span>
-                      )}
-                      {!isCompact && !isMedium && isRbf && (
-                        <span className="node-rbf-badge" title="BIP 125 Explicit RBF">
-                          RBF
-                        </span>
+                      {/* NORMAL & DENSE modes: compact particle-first, no inline text badges */}
+                      {isParticleMode && hasWitness && (
+                        <span className="particle-segwit-core" aria-hidden="true" />
                       )}
                     </div>
 
@@ -1484,9 +1531,9 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                         ) : (
                           <span className="tooltip-tag-neutral">Non-RBF</span>
                         )}
-                        {tx.hydration_status && (
-                          <span className="tooltip-tag-hydration">{tx.hydration_status}</span>
-                        )}
+                        <span className="tooltip-tag-hydration">
+                          Hydration: {tx.hydration_status ?? (isPending ? 'pending' : 'complete')}
+                        </span>
                       </div>
                     </div>
                   </button>

@@ -4234,7 +4234,7 @@ th {
     opacity: 0.45;
   }
   100% {
-    transform: translate(-50%, -50%) translate3d(calc(-1 * var(--stream-drift-span, 88cqi)), 0, 0);
+    transform: translate(-50%, -50%) translate3d(calc(-1 * var(--stream-drift-span, 88cqi)), var(--drift-delta-y, 0px), 0);
     opacity: 0;
   }
 }
@@ -4249,15 +4249,11 @@ th {
   }
 }
 
-/* Arrival animation: brief soft scale and blue/cyan halo */
+/* Arrival animation: restrained brief soft scale (0.75 -> 1) and small blue ring (450ms) */
 @keyframes tx-arrival-scale {
   0% {
-    transform: scale(0.7);
-    opacity: 0.3;
-  }
-  50% {
-    transform: scale(1.06);
-    opacity: 1;
+    transform: scale(0.75);
+    opacity: 0;
   }
   100% {
     transform: scale(1);
@@ -4267,13 +4263,10 @@ th {
 
 @keyframes tx-arrival-glow {
   0% {
-    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.85), 0 0 16px rgba(56, 189, 248, 0.6);
-  }
-  50% {
-    box-shadow: 0 0 0 5px rgba(56, 189, 248, 0.25), 0 0 12px rgba(56, 189, 248, 0.4);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.85);
   }
   100% {
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -4490,18 +4483,23 @@ details[open] .summary-chevron {
 }
 
 .stream-tx-node.rbf-indicated {
-  border: 1.5px solid #f59e0b;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  border: 1px solid #f59e0b;
+  box-shadow: none;
+  background: radial-gradient(circle at 35% 35%, #0f172a 0%, #060b13 100%);
 }
 
 .stream-tx-node.selected {
   border-color: #38bdf8;
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.6), 0 4px 16px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%) scale(1.25);
+  z-index: 50;
 }
 
 .stream-tx-node.rbf-indicated.selected {
   border-color: #f59e0b;
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.6), 0 4px 16px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%) scale(1.25);
+  z-index: 50;
 }
 
 /* Subtle organic bobbing wrapper */
@@ -4523,17 +4521,17 @@ details[open] .summary-chevron {
   animation-play-state: paused;
 }
 
-/* Arrival Ring Animation for New Transactions */
+/* Arrival Ring Animation for New Transactions (450ms restrained) */
 .stream-tx-node.node-enter-now {
-  animation: tx-arrival-glow 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
+  animation: tx-arrival-glow 450ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
              live-stream-drift var(--stream-duration, 120s) linear forwards;
   animation-delay: 0s, var(--stream-delay, 0s);
 }
 
 .stream-tx-node.node-enter-now .node-organic-bob {
-  animation: tx-arrival-scale 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
-             tx-organic-bob var(--bob-duration, 4.5s) ease-in-out infinite 600ms;
-  animation-delay: 0s, 600ms;
+  animation: tx-arrival-scale 450ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
+             tx-organic-bob var(--bob-duration, 4.5s) ease-in-out infinite 450ms;
+  animation-delay: 0s, 450ms;
 }
 
 .stream-tx-node.node-exit-confirmed {
@@ -4727,15 +4725,15 @@ details[open] .summary-chevron {
   text-transform: capitalize;
 }
 
-/* Compact Particle Node (Section 13) for high-density streams */
+/* Compact Particle Node for DENSE streams (7-13px) */
 .stream-tx-node.node-compact {
   background: radial-gradient(circle at 35% 35%, #0f172a 0%, #060b13 100%);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  border: 1px solid rgba(59, 130, 246, 0.35);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .stream-tx-node.node-compact.rbf-indicated {
-  background: radial-gradient(circle at 35% 35%, #18140e 0%, #080603 100%);
+  background: radial-gradient(circle at 35% 35%, #0f172a 0%, #060b13 100%);
   border: 1px solid #f59e0b;
   box-shadow: none;
 }
@@ -4752,18 +4750,38 @@ details[open] .summary-chevron {
   z-index: 50;
 }
 
-/* Medium Node (Section 13) for 41-120 nodes */
+/* Medium Particle Node for NORMAL streams (9-16px, particle-first) */
 .stream-tx-node.node-medium {
-  border-width: 1.2px;
+  background: radial-gradient(circle at 35% 35%, #0f172a 0%, #060b13 100%);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .stream-tx-node.node-medium.rbf-indicated {
-  border: 1.2px solid #f59e0b;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  border: 1px solid #f59e0b;
+  box-shadow: none;
+  background: radial-gradient(circle at 35% 35%, #0f172a 0%, #060b13 100%);
 }
 
-.stream-tx-node.node-medium .node-vsize-num {
-  font-size: 0.65rem;
+.stream-tx-node.node-medium:hover {
+  border-color: #60a5fa;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  z-index: 50;
+}
+
+.stream-tx-node.node-medium.selected {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.6);
+  z-index: 50;
+}
+
+/* Subtle SegWit core indicator inside compact particles */
+.particle-segwit-core {
+  width: 3px;
+  height: 3px;
+  background: #38bdf8;
+  border-radius: 50%;
+  pointer-events: none;
 }
 
 /* Source trust info button */

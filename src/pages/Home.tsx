@@ -20,14 +20,17 @@ export function Home(){
             </div>
             <h1>Bitcoin transaction security before signing.</h1>
             <p className="lead">
-              A deterministic open-source pre-sign security engine for Bitcoin transactions and PSBTs.
+              A deterministic open-source pre-sign security engine and real-time live chain observability platform for Bitcoin transactions and PSBTs.
             </p>
             <div className="actions">
-              <a className="button primary hero-cta" href="#inspector">
-                Open Inspector
+              <a className="button primary hero-cta" href="#live">
+                Explore Live Bitcoin
                 <span className="btn-arrow" aria-hidden="true">→</span>
               </a>
-              <a className="button secondary" href="https://github.com/j-kon/txsignx" target="_blank" rel="noreferrer">
+              <a className="button secondary" href="#inspector">
+                Open Inspector
+              </a>
+              <a className="button tertiary" href="https://github.com/j-kon/txsignx" target="_blank" rel="noreferrer">
                 View on GitHub
               </a>
               <a className="button tertiary" href="https://github.com/j-kon/txsignx-docs" target="_blank" rel="noreferrer">
@@ -114,13 +117,16 @@ export function Home(){
         <section className="final-cta-section">
           <div className="final-cta-card">
             <h2>Start inspecting transactions today.</h2>
-            <p>Explore the web inspector with public synthetic samples, or read the documentation to connect your local node.</p>
+            <p>Explore real Bitcoin Mainnet mempool activity in real time, inspect raw transactions with public synthetic samples, or read the documentation to connect your local node.</p>
             <div className="actions centered">
-              <a className="button primary" href="#inspector">
+              <a className="button primary" href="#live">
+                Explore Live Bitcoin
+              </a>
+              <a className="button secondary" href="#inspector">
                 Open Web Inspector
               </a>
-              <a className="button secondary" href="https://github.com/j-kon/txsignx-docs" target="_blank" rel="noreferrer">
-                Read the Documentation
+              <a className="button tertiary" href="https://github.com/j-kon/txsignx-docs" target="_blank" rel="noreferrer">
+                Read Documentation
               </a>
               <a className="button tertiary" href="https://github.com/j-kon/txsignx" target="_blank" rel="noreferrer">
                 GitHub Repository

@@ -98,10 +98,15 @@ class MockWebSocket {
   constructor(url: string) {
     this.url = url
     MockWebSocket.instances.push(this)
-    setTimeout(() => {
+    queueMicrotask(() => {
       this.readyState = 1
       this.onopen?.()
-    }, 10)
+      if (Array.isArray(liveSnapshotData?.latest_transactions)) {
+        liveSnapshotData.latest_transactions.forEach((tx: any) => {
+          this.emit({ type: 'transaction_added', data: tx })
+        })
+      }
+    })
   }
 
   send = vi.fn()

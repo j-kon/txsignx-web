@@ -110,6 +110,9 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   // Reference time for stream coordinate calculations; updated when transaction sets arrive
   const [streamReferenceTime, setStreamReferenceTime] = useState(() => Math.floor(Date.now() / 1000))
 
+  // Bounded live-session transactions set: strictly populated via WebSocket transaction_added
+  const [liveSessionTxids, setLiveSessionTxids] = useState<Set<string>>(() => new Set())
+
   // Track new txids for one-time arrival animation
   const [newTxids, setNewTxids] = useState<Set<string>>(new Set())
   const [confirmedTxids, setConfirmedTxids] = useState<Set<string>>(new Set())
@@ -202,8 +205,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         if (tx && tx.txid) {
           setStreamReferenceTime(Math.floor(Date.now() / 1000))
           setNewTxids((prev) => new Set(prev).add(tx.txid))
+          setLiveSessionTxids((prev) => new Set(prev).add(tx.txid))
           setTransactions((prev) => {
-            if (prev.some((t) => t.txid === tx.txid)) return prev
+            if (prev.some((t) => t.txid === tx.txid)) {
+              return prev.map((t) => (t.txid === tx.txid ? { ...t, ...tx } : t))
+            }
             return [tx, ...prev].slice(0, FRONTEND_WORKING_SET_LIMIT)
           })
           // Remove arrival highlight tag after 600ms
@@ -238,6 +244,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           setTimeout(() => {
             if (activeRef.current) {
               setTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
+              setLiveSessionTxids((prev) => {
+                const next = new Set(prev)
+                next.delete(payload.txid)
+                return next
+              })
               setRemovedTxids((prev) => {
                 const next = new Set(prev)
                 next.delete(payload.txid)
@@ -255,6 +266,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           setTimeout(() => {
             if (activeRef.current) {
               setTransactions((prev) => prev.filter((t) => t.txid !== payload.txid))
+              setLiveSessionTxids((prev) => {
+                const next = new Set(prev)
+                next.delete(payload.txid)
+                return next
+              })
               setConfirmedTxids((prev) => {
                 const next = new Set(prev)
                 next.delete(payload.txid)
@@ -605,24 +621,36 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
     }
   }, [densityMode])
 
-  // Animated stream nodes: bounded by densityLimit (80 / 180 / 300)
-  const visibleTransactions = useMemo(
-    () => transactions.slice(0, densityLimit),
-    [transactions, densityLimit]
+  // Transactions that arrived live during the current WebSocket session (Sections 2 & 3)
+  const liveSessionTransactions = useMemo(
+    () => transactions.filter((t) => liveSessionTxids.has(t.txid)),
+    [transactions, liveSessionTxids]
+  )
+
+  // Older / snapshot bootstrap transactions cached for inspection (Section 8)
+  const recentCachedTransactions = useMemo(
+    () => transactions.filter((t) => !liveSessionTxids.has(t.txid)),
+    [transactions, liveSessionTxids]
+  )
+
+  // Animated live stream nodes: bounded by densityLimit (80 / 180 / 300) applied to live session arrivals
+  const visibleLiveTransactions = useMemo(
+    () => liveSessionTransactions.slice(0, densityLimit),
+    [liveSessionTransactions, densityLimit]
   )
   const timeStampedTxs = useMemo(
-    () => visibleTransactions.filter(
+    () => visibleLiveTransactions.filter(
       (tx) => (tx.observed_at !== undefined && tx.observed_at !== null) ||
               (tx.first_seen_at !== undefined && tx.first_seen_at !== null)
     ),
-    [visibleTransactions]
+    [visibleLiveTransactions]
   )
   const unstampedTxs = useMemo(
-    () => visibleTransactions.filter(
+    () => visibleLiveTransactions.filter(
       (tx) => (tx.observed_at === undefined || tx.observed_at === null) &&
               (tx.first_seen_at === undefined || tx.first_seen_at === null)
     ),
-    [visibleTransactions]
+    [visibleLiveTransactions]
   )
 
   const maxTxAge = useMemo(() => {
@@ -636,18 +664,24 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
   }, [timeStampedTxs, streamReferenceTime])
 
   const preferredWindow = useMemo(() => {
-    if (timeStampedTxs.length > 100 && maxTxAge <= 30) return 30
-    if (timeStampedTxs.length > 100 && maxTxAge <= 120) return 120
-    return undefined
-  }, [timeStampedTxs.length, maxTxAge])
+    // Primary Live Flow represents recent observation activity: 90s or 120s max
+    if (timeStampedTxs.length > 80) return 120
+    return 90
+  }, [timeStampedTxs.length])
 
   const adaptiveWindow = useMemo(() => {
     return getAdaptiveTimeWindow(maxTxAge, preferredWindow)
   }, [maxTxAge, preferredWindow])
 
   const layoutMap = useMemo(() => {
-    return computeCollisionFreeLayout(timeStampedTxs, adaptiveWindow.windowSeconds, streamReferenceTime)
-  }, [timeStampedTxs, adaptiveWindow.windowSeconds, streamReferenceTime])
+    return computeCollisionFreeLayout(
+      timeStampedTxs,
+      adaptiveWindow.windowSeconds,
+      streamReferenceTime,
+      undefined,
+      densityMode
+    )
+  }, [timeStampedTxs, adaptiveWindow.windowSeconds, streamReferenceTime, densityMode])
 
   // If viewing full report, display ReportView with breadcrumb bar
   if (activeReport) {
@@ -788,7 +822,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         <div className="strip-item displaying-item">
           <span className="strip-label">DISPLAYING</span>
           <span className="strip-value mono">
-            {visibleTransactions.length} LIVE
+            {visibleLiveTransactions.length} LIVE
           </span>
         </div>
 
@@ -1026,7 +1060,12 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               TxSignX Live Flow
             </h2>
             <span className="live-count-badge">
-              {visibleTransactions.length} shown · {transactions.length} recently observed
+              {visibleLiveTransactions.length} live observations
+              {transactions.length > 0 && (
+                <span className="cached-count-secondary">
+                  {' '}· {transactions.length} recent observations cached
+                </span>
+              )}
             </span>
           </div>
 
@@ -1184,12 +1223,21 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 className="stream-lane-hint"
                 title="Position reflects when TxSignX observed the transaction, not necessarily its first propagation across the Bitcoin network."
               >
-                Horizontal position reflects TxSignX observation recency. Vertical lanes avoid overlap.
+                Horizontal placement reflects TxSignX observation recency with visual dispersion to keep simultaneous arrivals readable.
               </span>
             </div>
 
             {/* Time Stream Scene */}
             <div className="time-stream-scene">
+              {/* Session Start / Warm-Up Indicator (Section 5 & 16) */}
+              {visibleLiveTransactions.length === 0 && (
+                <div className="stream-warmup-state" role="status" aria-live="polite">
+                  <span className="live-dot pulse-blue" aria-hidden="true" />
+                  <span className="warmup-badge">● LIVE</span>
+                  <span className="warmup-text">Listening for new Bitcoin transactions…</span>
+                </div>
+              )}
+
               {/* Subtle horizontal lane guides */}
               <div className="stream-lane-guide guide-lane-0" aria-hidden="true" />
               <div className="stream-lane-guide guide-lane-1" aria-hidden="true" />
@@ -1394,6 +1442,45 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                     )
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* Older Bootstrap Observations (Section 8) */}
+            {recentCachedTransactions.length > 0 && (
+              <div className="recent-observations-tray" aria-label="Recent observations">
+                <details className="recent-observations-details">
+                  <summary className="recent-observations-summary">
+                    <span className="recent-observations-title">Recent observations</span>
+                    <span className="recent-observations-counter">
+                      ({recentCachedTransactions.length} cached)
+                    </span>
+                    <span className="summary-chevron" aria-hidden="true">▾</span>
+                  </summary>
+                  <div className="recent-observations-list">
+                    {recentCachedTransactions.slice(0, 50).map((tx) => (
+                      <button
+                        key={tx.txid}
+                        type="button"
+                        data-txid={tx.txid}
+                        className={`recent-obs-chip live-tx-node flow-node ${tx.explicit_rbf ? 'rbf-indicated' : ''} ${
+                          selectedTx?.txid === tx.txid ? 'selected' : ''
+                        }`}
+                        onClick={() => {
+                          triggerElementRef.current = document.activeElement as HTMLElement
+                          setSelectedTx(tx)
+                        }}
+                        title={`Inspect cached transaction ${truncateHash(tx.txid, 8, 8)}`}
+                      >
+                        <code className="tooltip-txid-code">{truncateHash(tx.txid, 5, 4)}</code>
+                        <span className="chip-vsize">{tx.vsize !== undefined && tx.vsize !== null ? `${tx.vsize} vB` : 'Pending'}</span>
+                        {tx.fee_rate !== undefined && tx.fee_rate !== null && (
+                          <span className="chip-feerate">{tx.fee_rate.toFixed(1)} sat/vB</span>
+                        )}
+                        {tx.explicit_rbf && <span className="chip-rbf-tag">RBF</span>}
+                      </button>
+                    ))}
+                  </div>
+                </details>
               </div>
             )}
           </div>

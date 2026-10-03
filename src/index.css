@@ -4160,7 +4160,7 @@ th {
 .time-stream-scene {
   container-type: inline-size;
   position: relative;
-  height: 320px;
+  height: 360px;
   overflow: hidden;
   background: radial-gradient(
     ellipse 60% 70% at 95% 50%,
@@ -4300,6 +4300,144 @@ th {
   }
 }
 
+/* Stream Warm-Up State (Sections 5 & 16) */
+.stream-warmup-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 22px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+  z-index: 5;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.stream-warmup-state .warmup-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #38bdf8;
+}
+
+.stream-warmup-state .warmup-text {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* Secondary Affordance: Recent Observations Tray (Section 8) */
+.recent-observations-tray {
+  margin-top: 10px;
+  padding: 0 4px;
+}
+
+.recent-observations-details {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  overflow: hidden;
+}
+
+.recent-observations-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  transition: background 0.15s ease;
+}
+
+.recent-observations-summary:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+}
+
+.recent-observations-title {
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.recent-observations-counter {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.summary-chevron {
+  margin-left: auto;
+  font-size: 0.75rem;
+  transition: transform 0.2s ease;
+}
+
+details[open] .summary-chevron {
+  transform: rotate(180deg);
+}
+
+.recent-observations-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.recent-obs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.recent-obs-chip:hover {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  color: #ffffff;
+}
+
+.recent-obs-chip.selected {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.recent-obs-chip.rbf-indicated {
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.recent-obs-chip .chip-vsize {
+  color: #94a3b8;
+  font-size: 0.7rem;
+}
+
+.recent-obs-chip .chip-feerate {
+  color: #38bdf8;
+  font-size: 0.7rem;
+  font-family: monospace;
+}
+
+.recent-obs-chip .chip-rbf-tag {
+  color: #f59e0b;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
 /* Animated Stream Transaction Node */
 .stream-tx-node {
   position: absolute;
@@ -4307,8 +4445,8 @@ th {
   animation: live-stream-drift var(--stream-duration, 120s) linear forwards;
   animation-delay: var(--stream-delay, 0s);
   will-change: transform, opacity;
-  background: radial-gradient(circle at 35% 35%, #1e293b 0%, #0f172a 100%);
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: radial-gradient(circle at 35% 35%, #0f172a 0%, #060b13 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: 50%;
   display: flex;
   flex-direction: column;
@@ -4317,7 +4455,7 @@ th {
   cursor: pointer;
   padding: 0;
   z-index: 10;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
@@ -4331,7 +4469,7 @@ th {
 
 .stream-tx-node:hover {
   border-color: #60a5fa;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), 0 0 14px rgba(59, 130, 246, 0.5);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 10px rgba(59, 130, 246, 0.4);
 }
 
 .stream-tx-node:focus-visible {
@@ -4341,7 +4479,7 @@ th {
 
 .stream-tx-node.pending-hydration {
   border: 1px dashed rgba(148, 163, 184, 0.45);
-  background: radial-gradient(circle at 35% 35%, #1e293b 0%, #0f172a 100%);
+  background: radial-gradient(circle at 35% 35%, #0f172a 0%, #060b13 100%);
   opacity: 0.85;
 }
 
@@ -4352,13 +4490,18 @@ th {
 }
 
 .stream-tx-node.rbf-indicated {
-  border: 2px solid #f7931a;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), 0 0 8px rgba(247, 147, 26, 0.25);
+  border: 1.5px solid #f59e0b;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .stream-tx-node.selected {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.6), 0 6px 20px rgba(0, 0, 0, 0.6);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.6), 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.stream-tx-node.rbf-indicated.selected {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.6), 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 /* Subtle organic bobbing wrapper */
@@ -4584,34 +4727,39 @@ th {
   text-transform: capitalize;
 }
 
-/* Compact Particle Node (Section 15) for high-density streams */
+/* Compact Particle Node (Section 13) for high-density streams */
 .stream-tx-node.node-compact {
-  background: radial-gradient(circle at 35% 35%, #1e293b 0%, #0f172a 100%);
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 4px rgba(56, 189, 248, 0.15);
+  background: radial-gradient(circle at 35% 35%, #0f172a 0%, #060b13 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .stream-tx-node.node-compact.rbf-indicated {
-  background: radial-gradient(circle at 35% 35%, #2a2218 0%, #110d07 100%);
-  border: 1.5px solid #f7931a;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 5px rgba(247, 147, 26, 0.25);
+  background: radial-gradient(circle at 35% 35%, #18140e 0%, #080603 100%);
+  border: 1px solid #f59e0b;
+  box-shadow: none;
 }
 
 .stream-tx-node.node-compact:hover {
   border-color: #60a5fa;
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
   z-index: 50;
 }
 
 .stream-tx-node.node-compact.selected {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.6), 0 0 12px rgba(59, 130, 246, 0.7);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1.5px rgba(56, 189, 248, 0.6);
   z-index: 50;
 }
 
-/* Medium Node (Section 15) for 41-120 nodes */
+/* Medium Node (Section 13) for 41-120 nodes */
 .stream-tx-node.node-medium {
-  border-width: 1.5px;
+  border-width: 1.2px;
+}
+
+.stream-tx-node.node-medium.rbf-indicated {
+  border: 1.2px solid #f59e0b;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
 .stream-tx-node.node-medium .node-vsize-num {

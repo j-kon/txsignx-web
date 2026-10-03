@@ -82,6 +82,9 @@ class MockWebSocket {
     setTimeout(() => {
       this.readyState = 1
       this.onopen?.()
+      mockSnapshot.latest_transactions.forEach((tx) => {
+        this.emit({ type: 'transaction_added', data: tx })
+      })
     }, 10)
   }
 
@@ -174,7 +177,8 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
       expect(screen.getByText('75,698')).toBeTruthy()
 
       // TxSignX Live Flow counter badge
-      expect(await screen.findByText('2 shown · 2 recently observed')).toBeTruthy()
+      expect(await screen.findByText(/2 live observations/)).toBeTruthy()
+      expect(screen.getByText(/recent observations cached/)).toBeTruthy()
       // Never display old misleading copy
       expect(screen.queryByText(/mempool entries/i)).toBeNull()
     })
@@ -200,7 +204,7 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
     it('displays neutral fallback without claiming fake vsize for unhydrated incoming transactions', async () => {
       render(<App />)
 
-      await screen.findByText('2 shown · 2 recently observed')
+      await screen.findByText(/2 live observations/)
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
       expect(ws).toBeDefined()
 
@@ -216,8 +220,8 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
         },
       })
 
-      // Working set increases to 3 recently observed
-      expect(await screen.findByText('3 shown · 3 recently observed')).toBeTruthy()
+      // Working set increases to 3 live observations
+      expect(await screen.findByText(/3 live observations/)).toBeTruthy()
 
       // The unhydrated node should have pending hydration marker
       const pendingNode = await screen.findByLabelText(/vsize: Pending/i)
@@ -236,7 +240,7 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
     it('updates node geometry and removes pending marker when transaction_updated arrives', async () => {
       render(<App />)
 
-      await screen.findByText('2 shown · 2 recently observed')
+      await screen.findByText(/2 live observations/)
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
       expect(ws).toBeDefined()
 
@@ -283,7 +287,7 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
     it('applies rbf-indicated ONLY to explicit RBF transactions and describes it factually', async () => {
       render(<App />)
 
-      await screen.findByText('2 shown · 2 recently observed')
+      await screen.findByText(/2 live observations/)
 
       const nonRbfNode = screen.getByLabelText(/Transaction aaaa11/i)
       const rbfNode = screen.getByLabelText(/Transaction bbbb22/i)

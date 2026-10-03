@@ -86,6 +86,9 @@ class MockWebSocket {
     setTimeout(() => {
       this.readyState = 1
       this.onopen?.()
+      mockSnapshot.latest_transactions.forEach((tx) => {
+        this.emit({ type: 'transaction_added', data: tx })
+      })
     }, 5)
   }
 

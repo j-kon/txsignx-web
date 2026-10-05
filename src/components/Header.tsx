@@ -58,6 +58,7 @@ export function Header({page}:HeaderProps){
           TxSign<span className="logo-accent">X</span>
         </a>
         <nav aria-label="Main navigation">
+          <a href="#home" aria-current={page === '#home' ? 'page' : undefined} onClick={handleNavClick('#home')}>Overview</a>
           <a
             href="#live"
             aria-current={page === '#live' ? 'page' : undefined}
@@ -79,7 +80,7 @@ export function Header({page}:HeaderProps){
           >
             Policies
           </a>
-          <a href="https://github.com/j-kon/txsignx" target="_blank" rel="noreferrer">
+          <a className="nav-external" href="https://github.com/j-kon/txsignx" target="_blank" rel="noreferrer">
             GitHub
           </a>
         </nav>

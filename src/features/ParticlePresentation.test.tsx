@@ -173,6 +173,7 @@ describe('Particle Presentation Tests (Section 15)', () => {
     )
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = TestWebSocket.instances[0]
     expect(ws).toBeDefined()
 
@@ -215,6 +216,7 @@ describe('Particle Presentation Tests (Section 15)', () => {
     )
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = TestWebSocket.instances[0]
     ws.emit({ type: 'transaction_added', data: tx1 }) // explicit_rbf: true
     ws.emit({ type: 'transaction_added', data: tx2 }) // explicit_rbf: false
@@ -237,6 +239,7 @@ describe('Particle Presentation Tests (Section 15)', () => {
     )
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = TestWebSocket.instances[0]
     ws.emit({ type: 'transaction_added', data: tx1 })
 

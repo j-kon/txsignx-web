@@ -14,6 +14,9 @@ import { FRONTEND_WORKING_SET_LIMIT } from './liveStreamLayout'
 export interface LiveFeedState {
   api: ApiClient
   snapshot: LiveSnapshot | null
+  lastUpdatedAt: number | null
+  refreshing: boolean
+  refresh: () => void
   blocks: RecentBlock[]
   transactions: LiveTransaction[]
   connectionStatus: 'connecting' | 'connected' | 'reconnecting' | 'error'
@@ -61,6 +64,9 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
     'connecting' | 'connected' | 'reconnecting' | 'error'
   >('connecting')
   const [errorMessage, setErrorMessage] = useState('')
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const refreshRef = useRef<() => void>(() => {})
 
   // Animated TIP flash state when new block connects
   const [newlyConnectedBlockHash, setNewlyConnectedBlockHash] = useState<string | null>(null)
@@ -151,6 +157,7 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
   // Handle validated live incoming events
   const handleEvent = (event: LiveEvent) => {
     if (!activeRef.current) return
+    setLastUpdatedAt(Math.floor(Date.now() / 1000))
 
     switch (event.type) {
       case 'snapshot': {
@@ -312,34 +319,61 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
     if (!hasActivated) return
     activeRef.current = true
 
-    const loadInitialSnapshot = async () => {
+    // Each effect owns its requests so a late response from a previous mount
+    // (including React StrictMode) cannot update the current feed.
+    let disposed = false
+    let pending = false
+    let openedOnce = false
+    let pendingEvents: LiveEvent[] = []
+    const loadSnapshot = async () => {
+      if (disposed || pending) return
+      pending = true
+      setRefreshing(true)
+      pendingEvents = []
       try {
         const snap = await api.liveSnapshot()
-        if (!activeRef.current) return
-        setSnapshot(snap)
-        setStreamReferenceTime(Math.floor(Date.now() / 1000))
-        if (snap.recent_blocks !== undefined && snap.recent_blocks !== null) {
-          setBlocks(snap.recent_blocks)
+        if (disposed) return
+        // Replay events received during this request over the HTTP baseline.
+        // This preserves startup metadata without reverting newer chain state.
+        let current = snap
+        for (const event of pendingEvents) {
+          switch (event.type) {
+            case 'snapshot': current = event.data; break
+            case 'transaction_added':
+            case 'transaction_updated': {
+              const txs = current.latest_transactions ?? []
+              const exists = txs.some(tx => tx.txid === event.data.txid)
+              current = {...current, latest_transactions: exists
+                ? txs.map(tx => tx.txid === event.data.txid ? {...tx, ...event.data} : tx)
+                : event.type === 'transaction_added' ? [event.data, ...txs].slice(0, FRONTEND_WORKING_SET_LIMIT) : txs}
+              break
+            }
+            case 'transaction_removed':
+            case 'transaction_confirmed':
+              current = {...current, latest_transactions: current.latest_transactions?.filter(tx => tx.txid !== event.data.txid)}
+              break
+            case 'block_connected':
+              current = {...current, tip_height: event.data.height, tip_hash: event.data.hash,
+                recent_blocks: [event.data, ...(current.recent_blocks ?? []).filter(block => block.height !== event.data.height)].slice(0, 6)}
+              break
+            case 'mempool_updated':
+              current = {...current, mempool: event.data, mempool_tx_count: event.data.tx_count, mempool_size_bytes: event.data.size_bytes}
+              break
+          }
         }
-        if (snap.latest_transactions !== undefined && snap.latest_transactions !== null) {
-          const latestTxs = snap.latest_transactions
-          setTransactions((prev) => {
-            const map = new Map<string, LiveTransaction>()
-            prev.forEach((t) => map.set(t.txid, t))
-            latestTxs.forEach((t: LiveTransaction) => {
-              if (!map.has(t.txid)) map.set(t.txid, t)
-            })
-            return Array.from(map.values()).slice(0, FRONTEND_WORKING_SET_LIMIT)
-          })
-        }
+        handleEventRef.current({type: 'snapshot', data: current})
         setErrorMessage('')
       } catch (err: unknown) {
-        if (!activeRef.current) return
-        const msg = err instanceof Error ? err.message : 'Could not reach Bitcoin Core node.'
-        setErrorMessage(msg)
-        setConnectionStatus('error')
+        if (disposed || pendingEvents.some(event => event.type === 'snapshot')) return
+        setErrorMessage(err instanceof Error ? err.message : 'Could not refresh live data.')
+        if (wsRef.current?.readyState !== 1) setConnectionStatus('error')
+      } finally {
+        pending = false
+        pendingEvents = []
+        if (!disposed) setRefreshing(false)
       }
     }
+    refreshRef.current = () => { void loadSnapshot() }
 
     const scheduleReconnect = (delayMs: number) => {
       if (!activeRef.current) return
@@ -374,6 +408,8 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
           }
           setConnectionStatus('connected')
           setErrorMessage('')
+          if (openedOnce) void loadSnapshot()
+          openedOnce = true
         }
 
         ws.onmessage = (e) => {
@@ -383,6 +419,8 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
             const parsed = JSON.parse(e.data)
             const event = liveEventSchema.parse(parsed)
             if (event) {
+              if (pending) pendingEvents.push(event)
+              setErrorMessage('')
               handleEventRef.current(event)
             }
           } catch {
@@ -416,10 +454,25 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
       }
     }
 
-    loadInitialSnapshot()
+    void loadSnapshot()
     connectWs()
+    // HTTP recovery remains available when WebSockets are blocked or interrupted.
+    const refreshTimer = window.setInterval(() => { void loadSnapshot() }, 15000)
+    const resume = () => {
+      if (document.visibilityState !== 'hidden') {
+        void loadSnapshot()
+        connectWs()
+      }
+    }
+    window.addEventListener('online', resume)
+    document.addEventListener('visibilitychange', resume)
 
     return () => {
+      disposed = true
+      refreshRef.current = () => {}
+      window.clearInterval(refreshTimer)
+      window.removeEventListener('online', resume)
+      document.removeEventListener('visibilitychange', resume)
       activeRef.current = false
       if (reconnectTimeoutRef.current !== undefined) {
         window.clearTimeout(reconnectTimeoutRef.current)
@@ -443,6 +496,9 @@ export function LiveFeedProvider({ api, children }: LiveFeedProviderProps) {
   const contextValue: LiveFeedState = {
     api,
     snapshot,
+    lastUpdatedAt,
+    refreshing,
+    refresh: () => refreshRef.current(),
     blocks,
     transactions,
     connectionStatus,

@@ -114,6 +114,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
   it('LiveFeedProvider remains mounted across route changes', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     // Verify WebSocket connected once
     expect(PersistentMockWebSocket.instances.length).toBe(1)
@@ -141,6 +142,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
   it('WebSocket is not recreated unnecessarily on every page route', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     expect(PersistentMockWebSocket.instances.length).toBe(1)
 
     // Cycle routes #live -> #home -> #inspector -> #policies -> #live
@@ -160,6 +162,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
   it('live transactions continue accumulating while Home renders', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = PersistentMockWebSocket.instances[0]
 
     // Add 2 transactions on #live
@@ -238,6 +241,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
     window.location.hash = '#live'
     window.dispatchEvent(new HashChangeEvent('hashchange'))
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     // All 5 transactions are present! Stream did NOT reset to 0
     await screen.findByText(/5 live observations/)
@@ -247,6 +251,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
   it('returning #home -> #live preserves active live transactions without warm-up reset', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = PersistentMockWebSocket.instances[0]
 
     const now = Math.floor(Date.now() / 1000)
@@ -279,6 +284,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
     const exploreBtn = screen.getAllByRole('link', { name: /Explore Live Bitcoin/i })[0]
     fireEvent.click(exploreBtn)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     // All 25 active transactions remain!
     expect(screen.getByText(/25 live observations/)).toBeTruthy()
@@ -288,6 +294,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
   it('expired transactions are still pruned while user is on Home', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = PersistentMockWebSocket.instances[0]
 
     const now = Math.floor(Date.now() / 1000)
@@ -320,6 +327,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
     window.location.hash = '#live'
     window.dispatchEvent(new HashChangeEvent('hashchange'))
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     // Expired transaction was pruned while on Home!
     expect(screen.queryByText(/1 live observations/)).toBeNull()
@@ -328,6 +336,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
   it('snapshot items are never promoted into live session set', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     // Snapshot item snap_boot_111... was in snapshot, never transaction_added
     expect(document.querySelector('.time-stream-scene [data-txid="snap_boot_111111111111111111111111111111111111111111111111111111111111"]')).toBeNull()
@@ -345,6 +354,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
 
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = PersistentMockWebSocket.instances[0]
 
     // Route around
@@ -367,6 +377,7 @@ describe('LiveFeedProvider In-Memory Route Persistence (Section 14)', () => {
     window.location.hash = '#live'
     window.dispatchEvent(new HashChangeEvent('hashchange'))
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     expect(localSetSpy).not.toHaveBeenCalled()
     expect(localGetSpy).not.toHaveBeenCalled()

@@ -146,9 +146,9 @@ export function Inspector({api}:{api:ApiClient}) {
   return (
     <div className="inspector-page">
       <div className="page-heading">
-        <span className="section-kicker">Developer Console</span>
+        <span className="section-kicker">Transaction workspace</span>
         <h1>Transaction Inspector</h1>
-        <p>Inspect. Verify. Sign with Confidence.</p>
+        <p>Turn transaction data into clear facts, findings, and a decision you can review.</p>
       </div>
 
       <div className="workspace">
@@ -432,26 +432,14 @@ export function Inspector({api}:{api:ApiClient}) {
             <ReportView report={report} onClear={clear}/>
           ) : (
             <section className="empty-report">
-              <div className="decorative-topology" aria-hidden="true">
-                <svg viewBox="0 0 240 160" width="240" height="160" fill="none">
-                  <line x1="120" y1="20" x2="120" y2="140" stroke="#1E4B8F" strokeWidth="1.2" strokeDasharray="3 4" opacity="0.5" />
-                  <line x1="30" y1="80" x2="210" y2="80" stroke="#1E4B8F" strokeWidth="1.2" strokeDasharray="3 4" opacity="0.5" />
-                  <circle cx="120" cy="25" r="4" fill="#111827" stroke="#3B82F6" strokeWidth="1.5" />
-                  <circle cx="120" cy="135" r="4" fill="#111827" stroke="#3B82F6" strokeWidth="1.5" />
-                  <circle cx="35" cy="80" r="4" fill="#111827" stroke="#3B82F6" strokeWidth="1.5" />
-                  <circle cx="205" cy="80" r="4" fill="#111827" stroke="#F7931A" strokeWidth="1.5" />
-                  {/* Central X badge */}
-                  <rect x="105" y="65" width="30" height="30" rx="4" fill="#111827" stroke="#243041" strokeWidth="1.5" />
-                  <path d="M114 74L126 86M126 74L114 86" stroke="#F7931A" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </div>
+              <span className="workbench-caption">Your report starts here</span>
               <h2>Understand what you are signing.</h2>
               <p>Inspect a PSBT, raw transaction, or transaction ID before signing.</p>
-              <div className="empty-chips">
-                <span className="chip-feat">Factual Inspection</span>
-                <span className="chip-feat">15 Deterministic Rules</span>
-                <span className="chip-feat">Zero Key Access</span>
-              </div>
+              <ol className="inspector-guide">
+                <li><span>01</span><div><strong>Choose a format</strong><p>Start with a PSBT, raw transaction, or transaction ID.</p></div></li>
+                <li><span>02</span><div><strong>Provide the context</strong><p>Paste your data or try a public sample. Add wallet context when available.</p></div></li>
+                <li><span>03</span><div><strong>Review the evidence</strong><p>Read transaction facts, policy findings, and the coverage of each check.</p></div></li>
+              </ol>
               <p className="muted small">
                 Transaction Explorer & preflight inspection only. No signing, finalization, or broadcasting capabilities exist in this web application.
               </p>

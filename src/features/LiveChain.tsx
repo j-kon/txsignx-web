@@ -12,6 +12,8 @@ import {
   liveEventSchema,
 } from '../lib/api/schema'
 import { ReportView } from './ReportView'
+import { LiveFlowBoard } from './LiveFlowBoard'
+import { LiveSessionPanel } from './LiveSessionPanel'
 import {
   getAdaptiveTimeWindow,
   computeCollisionFreeLayout,
@@ -112,7 +114,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchError, setSearchError] = useState('')
-  const [viewMode, setViewMode] = useState<'flow' | 'graph'>('flow')
+  const [viewMode, setViewMode] = useState<'board' | 'flow' | 'graph'>('board')
   const [densityMode, setDensityMode] = useState<'calm' | 'normal' | 'dense'>('normal')
 
   // Selected mempool transaction for preview drawer
@@ -856,6 +858,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       <div className="live-grid-overlay" aria-hidden="true" />
 
       <header className="live-chain-page-header">
+        <span className="section-kicker">Network explorer</span>
         <h1 className="live-chain-title">Live Bitcoin Chain & Mempool</h1>
         <p className="live-chain-subtitle">
           Real-time Bitcoin block and mempool observability. Inspect transactions before signing.
@@ -866,7 +869,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
       <section className="live-status-strip" aria-label="Bitcoin network status">
         <div className="strip-item network-item">
           <span className="live-dot pulse-green" aria-hidden="true" />
-          <span className="strip-label">NETWORK</span>
+          <span className="strip-label">Network</span>
           <span className="strip-value uppercase font-semibold">
             {snapshot?.network === 'bitcoin' ? 'Bitcoin Mainnet' : (snapshot?.network || '—')}
           </span>
@@ -875,7 +878,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         <div className="strip-divider" aria-hidden="true" />
 
         <div className="strip-item height-item">
-          <span className="strip-label">HEIGHT</span>
+          <span className="strip-label">Block height</span>
           <span className="strip-value mono">
             {snapshot ? `#${snapshot.tip_height.toLocaleString()}` : '—'}
           </span>
@@ -884,7 +887,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         <div className="strip-divider" aria-hidden="true" />
 
         <div className="strip-item block-item">
-          <span className="strip-label">TIP BLOCK</span>
+          <span className="strip-label">Tip block</span>
           <span className="strip-value mono" title={snapshot?.tip_hash}>
             {snapshot?.tip_hash ? truncateHash(snapshot.tip_hash, 6, 6) : '—'}
           </span>
@@ -893,7 +896,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         <div className="strip-divider" aria-hidden="true" />
 
         <div className="strip-item mempool-item">
-          <span className="strip-label">MEMPOOL</span>
+          <span className="strip-label">Mempool</span>
           <span className="strip-value mono">
             {snapshot ? (
               snapshot.mempool !== undefined && snapshot.mempool !== null ? (
@@ -933,7 +936,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         <div className="strip-divider" aria-hidden="true" />
 
         <div className="strip-item displaying-item">
-          <span className="strip-label">DISPLAYING</span>
+          <span className="strip-label">Live arrivals</span>
           <span className="strip-value mono">
             {visibleLiveTransactions.length} LIVE
           </span>
@@ -942,7 +945,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         <div className="strip-divider" aria-hidden="true" />
 
         <div className="strip-item source-item">
-          <span className="strip-label">SOURCE</span>
+          <span className="strip-label">Data source</span>
           <span className="strip-value uppercase font-semibold">
             {snapshot?.source_label || (snapshot?.network === 'bitcoin' ? 'Public Mainnet Feed' : 'Bitcoin Core')}
           </span>
@@ -974,7 +977,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               ? 'Live (streaming)'
               : connectionStatus === 'reconnecting'
               ? 'Reconnecting…'
-              : 'Offline'}
+              : connectionStatus === 'connecting' ? 'Connecting…' : 'Offline'}
           </span>
         </div>
       </section>
@@ -1165,10 +1168,13 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
         )}
       </section>
 
+
+
       {/* TxSignX Live Flow Section as True Time Stream (Sections 10, 11, 12, 16, 17) */}
-      <section className="live-flow-section" aria-labelledby="live-flow-heading">
+      <section className="live-flow-section flow-workbench" aria-labelledby="live-flow-heading">
         <div className="live-flow-header">
           <div className="flow-title-group">
+            <span className="flow-workbench-kicker">The transaction workspace</span>
             <h2 id="live-flow-heading" className="section-title">
               TxSignX Live Flow
             </h2>
@@ -1183,8 +1189,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           </div>
 
           <div className="flow-controls-group">
-            {/* Density Selector (Section 14) */}
-            <div
+            {viewMode === 'flow' && <div
               className="density-mode-segmented"
               role="radiogroup"
               aria-label="Stream density"
@@ -1221,12 +1226,14 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
               </button>
             </div>
 
-            {/* Compact Segmented Control (Section 16) */}
+            }
+            {/* Choose the transaction board, temporal view, or dependencies. */}
             <div
               className="view-mode-segmented"
               role="radiogroup"
               aria-label="View display mode"
             >
+              <button type="button" role="radio" aria-label="Activity board" aria-checked={viewMode === 'board'} className={`segmented-btn ${viewMode === 'board' ? 'active' : ''}`} onClick={() => setViewMode('board')}>Activity board</button>
               <button
                 type="button"
                 role="radio"
@@ -1235,7 +1242,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 className={`segmented-btn ${viewMode === 'flow' ? 'active' : ''}`}
                 onClick={() => setViewMode('flow')}
               >
-                Live Stream
+                Time stream
               </button>
               <button
                 type="button"
@@ -1245,7 +1252,7 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
                 className={`segmented-btn ${viewMode === 'graph' ? 'active' : ''}`}
                 onClick={() => setViewMode('graph')}
               >
-                Dependency Graph
+                Dependencies
                 {graphLinks.length > 0 && (
                   <span className="segmented-badge">{graphLinks.length}</span>
                 )}
@@ -1254,7 +1261,11 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
           </div>
         </div>
 
-        {/* Redesigned Compact Visual Encoding Legend (Section 11) */}
+        {viewMode === 'board' ? <LiveFlowBoard transactions={transactions} liveTxids={activeLiveSessionTxids} now={nowSeconds} status={connectionStatus} onSelect={tx => {
+          triggerElementRef.current = document.activeElement as HTMLElement
+          setSelectedTx(tx)
+        }}/> : <>
+        {/* Temporal visualization legend */}
         <div className="compact-legend-strip flow-legend" aria-label="Visual encoding legend">
           <span className="legend-strip-title legend-label">Encoding Legend:</span>
           <div className="legend-chip">
@@ -1763,7 +1774,21 @@ export function LiveChain({ api, onNavigateInspector }: LiveChainProps) {
             )}
           </div>
         )}
+        </>}
       </section>
+
+      <details className="flow-recent-list">
+        <summary>Recent transaction list <span>{transactions.length} observations</span></summary>
+      <LiveSessionPanel
+        transactions={transactions}
+        liveTxids={liveSessionTxids}
+        now={nowSeconds}
+        onSelect={(tx) => {
+          triggerElementRef.current = document.activeElement as HTMLElement
+          setSelectedTx(tx)
+        }}
+      />
+      </details>
 
       {/* Block Detail Drawer (Sections 6 & 7) */}
       {selectedBlock && (

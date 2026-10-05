@@ -100,7 +100,7 @@ describe('Section 23: Home Routing & Logo Navigation Tests', () => {
         name: 'Bitcoin transaction security before signing.',
       })
     ).toBeTruthy()
-    expect(screen.getByText('Not another wallet.')).toBeTruthy()
+    expect(screen.getByText('Built in Rust. Deterministic by design.')).toBeTruthy()
   })
 
   it('#home renders Home', async () => {
@@ -289,7 +289,7 @@ describe('Section 23: Home Routing & Logo Navigation Tests', () => {
     }
   })
 
-  it('Home hero CTA order has Explore Live Bitcoin as primary and Open Inspector as secondary', async () => {
+  it('Home presents the inspector as the primary action and links to the live chain', async () => {
     window.location.hash = '#home'
     render(<App />)
 
@@ -297,14 +297,14 @@ describe('Section 23: Home Routing & Logo Navigation Tests', () => {
       name: 'Bitcoin transaction security before signing.',
     })
 
-    const heroPrimaryCta = document.querySelector('.hero .button.primary.hero-cta') as HTMLAnchorElement
+    const heroPrimaryCta = document.querySelector('.landing-hero .button.primary') as HTMLAnchorElement
     expect(heroPrimaryCta).toBeTruthy()
-    expect(heroPrimaryCta.getAttribute('href')).toBe('#live')
-    expect(heroPrimaryCta.textContent).toContain('Explore Live Bitcoin')
+    expect(heroPrimaryCta.getAttribute('href')).toBe('#inspector')
+    expect(heroPrimaryCta.textContent).toContain('Open Inspector')
 
-    const heroSecondaryCta = document.querySelector('.hero .button.secondary') as HTMLAnchorElement
+    const heroSecondaryCta = document.querySelector('.landing-hero .landing-text-link') as HTMLAnchorElement
     expect(heroSecondaryCta).toBeTruthy()
-    expect(heroSecondaryCta.getAttribute('href')).toBe('#inspector')
-    expect(heroSecondaryCta.textContent).toContain('Open Inspector')
+    expect(heroSecondaryCta.getAttribute('href')).toBe('#live')
+    expect(heroSecondaryCta.textContent).toContain('Explore Live Bitcoin')
   })
 })

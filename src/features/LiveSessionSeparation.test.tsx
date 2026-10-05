@@ -129,6 +129,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
 
     // Wait for header to render
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     // Snapshot transactions must NOT appear as moving .stream-tx-node in the scene
     const scene = document.querySelector('.time-stream-scene')
@@ -157,6 +158,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     // Warm-up banner appears inside the stream scene
     const warmupBanner = await screen.findByText('Listening for new Bitcoin transactions…')
@@ -183,6 +185,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
     expect(ws).toBeDefined()
 
@@ -217,6 +220,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
     expect(ws).toBeDefined()
 
@@ -261,6 +265,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
     expect(ws).toBeDefined()
 
@@ -305,6 +310,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
     expect(ws).toBeDefined()
 
@@ -347,6 +353,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
     expect(ws).toBeDefined()
 
@@ -375,6 +382,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
     expect(ws).toBeDefined()
 
@@ -467,6 +475,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     render(<App />)
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     // Click logo -> navigates to #home
     const logoLink = screen.getByRole('link', { name: /TxSignX Home/i })
@@ -496,6 +505,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('live transaction expires after active window', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'active_window_tx_000000000000000000000000000000000000000000000001'
@@ -525,6 +535,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('expired transaction no longer counts as live observation', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'expired_count_tx_000000000000000000000000000000000000000000000002'
@@ -553,6 +564,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('expired transaction may remain in Recent Observations', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'recent_obs_retained_tx_0000000000000000000000000000000000000003'
@@ -583,6 +595,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('liveSessionTxids does not retain IDs absent from transactions', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'prune_absent_tx_000000000000000000000000000000000000000000000004'
@@ -639,6 +652,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('confirmed transaction is removed immediately', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'immediate_confirm_tx_000000000000000000000000000000000000000006'
@@ -679,6 +693,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('generic removed transaction is removed immediately', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'immediate_removed_tx_000000000000000000000000000000000000000007'
@@ -718,6 +733,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('snapshot does not add IDs to liveSessionTxids', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const now = Math.floor(Date.now() / 1000)
@@ -759,6 +775,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('snapshot prunes stale IDs', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const now = Math.floor(Date.now() / 1000)
@@ -830,6 +847,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
     // Under reduced motion, animations are disabled, but time-based expiry must still work
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'reduced_motion_expire_00000000000000000000000000000000000000011'
@@ -859,6 +877,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('animationend for live-stream-drift removes animated membership', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'anim_end_tx_0000000000000000000000000000000000000000000000012'
@@ -897,6 +916,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('unrelated animationend does not remove transaction', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'unrelated_anim_tx_00000000000000000000000000000000000000000013'
@@ -932,6 +952,7 @@ describe('Live Session Separation & Visual Model Requirements (PR #6)', () => {
   it('CSS timing properties remain stable while expiry clock advances', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const ws = CleanMockWebSocket.instances[CleanMockWebSocket.instances.length - 1]
 
     const txid = 'stable_timing_tx_0000000000000000000000000000000000000000014'

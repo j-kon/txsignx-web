@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest'
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react'
 import App from './App'
 import { ApiClient } from './lib/api/client'
 import pass from './test/fixtures/pass.json'
@@ -209,7 +209,7 @@ async function analyze(){
 }
 
 describe('product flows',()=>{
-  it('renders the actual positioning, orbital visual, and public synthetic preview',()=>{
+  it('renders the positioning, verification boundary, and public synthetic preview',()=>{
     window.location.hash='#about'
     render(<App/>)
     expect(screen.getByRole('heading',{name:'Bitcoin transaction security before signing.'})).toBeTruthy()
@@ -713,6 +713,16 @@ describe('Live Chain Observability Interface', () => {
     window.location.hash = '#live'
   })
 
+  it('opens the activity board by default and lets users choose the time stream', async () => {
+    render(<App />)
+    expect(screen.getByRole('radio', {name: 'Activity board'}).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('button', {name: 'Pause display'})).toBeTruthy()
+    expect(await screen.findByRole('button', {name: /Inspect 7b0553/})).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
+    expect(screen.getByRole('region', {name: 'Live mempool time stream'})).toBeTruthy()
+    expect(screen.queryByRole('button', {name: 'Pause display'})).toBeNull()
+  })
+
   it('loads live snapshot directly from ApiClient', async () => {
     const api = new ApiClient('http://127.0.0.1:8080')
     const snap = await api.liveSnapshot()
@@ -723,6 +733,7 @@ describe('Live Chain Observability Interface', () => {
   it('renders Live Chain under #live with stats, recent blocks, and mempool flow', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     expect(screen.getByRole('heading', { name: 'Live Bitcoin Chain & Mempool' })).toBeTruthy()
     expect(screen.getByPlaceholderText(/Search transaction ID/)).toBeTruthy()
@@ -737,6 +748,7 @@ describe('Live Chain Observability Interface', () => {
   it('renders recent blocks with height, short hash, count, weight, and timestamp/age', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     expect(await screen.findByRole('heading', { name: 'Recent Blocks' })).toBeTruthy()
     expect(screen.getAllByText(/#101/).length).toBeGreaterThan(0)
@@ -749,6 +761,7 @@ describe('Live Chain Observability Interface', () => {
   it('renders mempool stats accurately', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     expect(await screen.findByText(/\(1\.2\s*kB\)/i)).toBeTruthy()
     expect(screen.getAllByText('2').length).toBeGreaterThan(0)
@@ -757,6 +770,7 @@ describe('Live Chain Observability Interface', () => {
   it('renders live transaction nodes with encoding legend', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     expect(await screen.findByRole('heading', { name: 'TxSignX Live Flow' })).toBeTruthy()
     expect(screen.getByText(/Node width\/size = Virtual Size \(vB\)/)).toBeTruthy()
@@ -773,6 +787,7 @@ describe('Live Chain Observability Interface', () => {
   it('opens transaction preview side drawer upon clicking a live node and verifies values', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     const txNode = await screen.findByText('7b055…1101')
     fireEvent.click(txNode)
@@ -798,6 +813,7 @@ describe('Live Chain Observability Interface', () => {
     txReport = txidConfirmed
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     const txNode = await screen.findByText('7b055…1101')
     fireEvent.click(txNode)
@@ -815,6 +831,7 @@ describe('Live Chain Observability Interface', () => {
   it('handles live transaction events via WebSocket stream', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await screen.findByText('7b055…1101')
     const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -843,6 +860,7 @@ describe('Live Chain Observability Interface', () => {
   it('handles live block connected events via WebSocket stream', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await screen.findAllByText(/#101/)
     const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -869,6 +887,7 @@ describe('Live Chain Observability Interface', () => {
     txReport = txidConfirmed
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     const searchInput = screen.getByPlaceholderText(/Search transaction ID/)
     const validTxid = '7b0553bb182f567b5797be982ec47094b8e21783ae41088ec3dc71c0800d1101'
@@ -882,6 +901,7 @@ describe('Live Chain Observability Interface', () => {
   it('navigates to manual Inspector via Inspect manually button', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     const manualBtn = await screen.findByRole('button', { name: 'Inspect manually' })
     fireEvent.click(manualBtn)
@@ -901,6 +921,7 @@ describe('Live Chain Observability Interface', () => {
     }
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     expect(await screen.findByText('Mempool is currently empty on this node')).toBeTruthy()
     expect(screen.getByText(/Listening for new unconfirmed transactions/)).toBeTruthy()
@@ -914,6 +935,7 @@ describe('Live Chain Observability Interface', () => {
     }))
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByText(/Bitcoin Core Node Observation Notice/)).toBeTruthy()
@@ -923,6 +945,7 @@ describe('Live Chain Observability Interface', () => {
   it('toggles display mode between Live Flow and Transaction Flow Graph', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
     const graphToggle = screen.getByRole('radio', { name: /Transaction Flow Graph/ })
@@ -938,6 +961,7 @@ describe('Live Chain Observability Interface', () => {
   it('updates stream status when WebSocket disconnects', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await screen.findByText(/Live \(streaming\)/)
     const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -963,6 +987,7 @@ describe('Live Chain Observability Interface', () => {
     }
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     const networkCard = await screen.findByLabelText('Bitcoin network status')
     expect(networkCard.textContent).toContain('—')
@@ -979,6 +1004,7 @@ describe('Live Chain Observability Interface', () => {
     }
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     expect(await screen.findByText('Unavailable')).toBeTruthy()
     expect(await screen.findByText('Mempool transaction data unavailable')).toBeTruthy()
@@ -1001,6 +1027,7 @@ describe('Live Chain Observability Interface', () => {
     }
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     const txCard = await screen.findByText('11111…1111')
     fireEvent.click(txCard)
@@ -1015,6 +1042,7 @@ describe('Live Chain Observability Interface', () => {
   it('safely ignores malformed or unknown WebSocket messages without crashing', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await screen.findByText('7b055…1101')
     const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -1030,6 +1058,7 @@ describe('Live Chain Observability Interface', () => {
   it('updates mempool statistics authoritatively on mempool_updated event', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await screen.findByText('7b055…1101')
     const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -1052,6 +1081,7 @@ describe('Live Chain Observability Interface', () => {
   it('removes transaction and tracks confirmation on transaction_confirmed event', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await screen.findByText('7b055…1101')
     const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -1076,6 +1106,7 @@ describe('Live Chain Observability Interface', () => {
   it('maintains matching coordinates between DAG node cards and SVG paths in graph mode', async () => {
     window.location.hash = '#live'
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
     const graphToggle = screen.getByRole('radio', { name: /Transaction Flow Graph/ })
@@ -1094,6 +1125,7 @@ describe('Live Chain Observability Interface', () => {
     it('Recent Block card is keyboard and click interactive', async () => {
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
       expect(blockBtn).toBeTruthy()
@@ -1109,6 +1141,7 @@ describe('Live Chain Observability Interface', () => {
     it('renders authoritative block details and secondary blockchain facts in drawer', async () => {
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
       fireEvent.click(blockBtn)
@@ -1133,6 +1166,7 @@ describe('Live Chain Observability Interface', () => {
     it('renders paginated transaction list with coinbase badge identification', async () => {
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
       fireEvent.click(blockBtn)
@@ -1148,8 +1182,9 @@ describe('Live Chain Observability Interface', () => {
 
       // Transaction items rendered
       expect(screen.getAllByText(/4a5e1e/).length).toBeGreaterThan(0)
-      expect(screen.getByText(/7b0553/)).toBeTruthy()
-      expect(screen.getByText(/8c0664/)).toBeTruthy()
+      const blockDialog = within(screen.getByRole('dialog', { name: /Block #101/i }))
+      expect(blockDialog.getByText(/7b0553/)).toBeTruthy()
+      expect(blockDialog.getByText(/8c0664/)).toBeTruthy()
     })
 
     it('supports pagination via Load More transactions in block drawer', async () => {
@@ -1169,6 +1204,7 @@ describe('Live Chain Observability Interface', () => {
 
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
       fireEvent.click(blockBtn)
@@ -1203,6 +1239,7 @@ describe('Live Chain Observability Interface', () => {
       txReport = txidConfirmed
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
       fireEvent.click(blockBtn)
@@ -1233,6 +1270,7 @@ describe('Live Chain Observability Interface', () => {
     it('closes block drawer on Escape key and restores focus', async () => {
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
       blockBtn.focus()
@@ -1252,6 +1290,7 @@ describe('Live Chain Observability Interface', () => {
     it('animates new block into chain tip on block_connected event', async () => {
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       await screen.findAllByText('#101')
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -1280,6 +1319,7 @@ describe('Live Chain Observability Interface', () => {
     it('positions live stream node along the time axis using first_seen_at', async () => {
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       await screen.findByText('7b055…1101')
       const streamNodes = document.querySelectorAll('.stream-tx-node')
@@ -1292,6 +1332,7 @@ describe('Live Chain Observability Interface', () => {
     it('handles transaction_added event at the NOW edge with pulse', async () => {
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       await screen.findByText('7b055…1101')
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -1323,6 +1364,7 @@ describe('Live Chain Observability Interface', () => {
     it('handles transaction_removed event neutrally', async () => {
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       await screen.findByText('7b055…1101')
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
@@ -1351,6 +1393,7 @@ describe('Live Chain Observability Interface', () => {
 
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const node = await screen.findByText('7b055…1101')
       fireEvent.click(node)
@@ -1399,6 +1442,7 @@ describe('Live Chain Observability Interface', () => {
 
       window.location.hash = '#live'
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const blockBtn = await screen.findByRole('button', { name: /Explore block #101/i })
       fireEvent.click(blockBtn)
@@ -1501,6 +1545,7 @@ describe('Live Chain Observability Interface', () => {
       it('transaction node text does not contain oversized multi-line content', async () => {
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
         const calmBtn = await screen.findByRole('radio', { name: /Calm/i })
         fireEvent.click(calmBtn)
         const node = await screen.findByText('7b055…1101')
@@ -1515,6 +1560,7 @@ describe('Live Chain Observability Interface', () => {
       it('tooltip contains TXID/vsize/fee rate', async () => {
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
         const node = await screen.findByText('7b055…1101')
         const button = node.closest('.stream-tx-node') as HTMLElement
         expect(button).toBeTruthy()
@@ -1531,6 +1577,7 @@ describe('Live Chain Observability Interface', () => {
         Element.prototype.scrollIntoView = scrollMock
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
         const tipCard = await screen.findByRole('button', { name: /Explore block #101/i })
         await waitFor(() => {
           expect(scrollMock).toHaveBeenCalled()
@@ -1544,6 +1591,7 @@ describe('Live Chain Observability Interface', () => {
         Element.prototype.scrollIntoView = scrollMock
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
         await screen.findByRole('button', { name: /Explore block #101/i })
         scrollMock.mockClear()
 
@@ -1572,6 +1620,7 @@ describe('Live Chain Observability Interface', () => {
         Element.prototype.scrollIntoView = scrollMock
         window.location.hash = '#live'
         const { container } = render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
         await screen.findByRole('button', { name: /Explore block #101/i })
         await waitFor(() => expect(scrollMock).toHaveBeenCalled())
         scrollMock.mockClear()
@@ -1624,6 +1673,7 @@ describe('Live Chain Observability Interface', () => {
 
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
         await screen.findByRole('button', { name: /Explore block #101/i })
 
         await waitFor(() => {
@@ -1639,6 +1689,7 @@ describe('Live Chain Observability Interface', () => {
       it('Live Chain route/hash is consistent and wordmark links to #home', async () => {
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
         expect(window.location.hash).toBe('#live')
         expect(await screen.findByRole('heading', { name: 'Live Bitcoin Chain & Mempool' })).toBeTruthy()
@@ -1668,6 +1719,7 @@ describe('Live Chain Observability Interface', () => {
 
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
         expect(await screen.findByText('Bitcoin Mainnet')).toBeTruthy()
         expect(screen.getByText(/Public Mainnet Feed/i)).toBeTruthy()
@@ -1682,6 +1734,7 @@ describe('Live Chain Observability Interface', () => {
       it('supports density switching between CALM (80), NORMAL (180), and DENSE (300)', async () => {
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
         await screen.findByRole('heading', { name: 'TxSignX Live Flow' })
 
@@ -1710,6 +1763,7 @@ describe('Live Chain Observability Interface', () => {
 
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
         const txNode = await screen.findByText('7b055…1101')
         fireEvent.click(txNode)
@@ -1735,6 +1789,7 @@ describe('Live Chain Observability Interface', () => {
 
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
         const txNode = await screen.findByText('7b055…1101')
         fireEvent.click(txNode)
@@ -1746,6 +1801,7 @@ describe('Live Chain Observability Interface', () => {
       it('handles transaction_updated event to hydrate pending mainnet transactions', async () => {
         window.location.hash = '#live'
         render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
         await screen.findByText('7b055…1101')
         const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]

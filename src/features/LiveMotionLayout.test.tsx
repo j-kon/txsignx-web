@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, render, waitFor, fireEvent, screen } from '@testing-library/react'
 import App from '../App'
 import {
   getVisualOffset,
@@ -234,6 +234,7 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
 
   it('RBF outline only when explicit_rbf == true', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await waitFor(() => {
       expect(document.querySelector('[data-txid="1111111111111111111111111111111111111111111111111111111111111111"]')).toBeTruthy()
@@ -249,6 +250,7 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
 
   it('pending hydration remains visually neutral', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     await waitFor(() => {
       const node = document.querySelector('[data-txid="3333333333333333333333333333333333333333333333333333333333333333"]')
@@ -263,6 +265,7 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
 
   it('confirmed transaction leaves stream with exit animation class', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     const targetTxid = '1111111111111111111111111111111111111111111111111111111111111111'
     await waitFor(() => {
@@ -289,6 +292,7 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
 
   it('removed transaction leaves neutrally with exit animation class', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
     const targetTxid = '2222222222222222222222222222222222222222222222222222222222222222'
     await waitFor(() => {
@@ -348,6 +352,7 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
 
   it('advancing nowSeconds does NOT restart animation', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const targetTxid = '1111111111111111111111111111111111111111111111111111111111111111'
     await waitFor(() => {
       expect(document.querySelector(`[data-txid="${targetTxid}"]`)).toBeTruthy()
@@ -393,6 +398,7 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
 
   it('observed_at and first_seen_at remain unchanged and authentic', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     await waitFor(() => {
       expect(document.querySelector('[data-txid="1111111111111111111111111111111111111111111111111111111111111111"]')).toBeTruthy()
     })
@@ -412,6 +418,7 @@ describe('Section 24: Live Motion & Layout Deterministic Tests', () => {
     expect(css).toMatch(/\.stream-tx-node\.selected[\s\S]*?animation-play-state:\s*paused/)
 
     render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
     const targetTxid = '2222222222222222222222222222222222222222222222222222222222222222'
     await waitFor(() => {
       expect(document.querySelector(`[data-txid="${targetTxid}"]`)).toBeTruthy()

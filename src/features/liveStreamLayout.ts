@@ -12,7 +12,13 @@ export function getAdaptiveTimeWindow(maxAgeSeconds: number, preferredWindow?: n
       axisTicks: ['30s ago', '20s', '10s', '5s', 'NOW'],
     }
   }
-  if (preferredWindow === 120 && maxAgeSeconds <= 120) {
+  if (preferredWindow === 90) {
+    return {
+      windowSeconds: 90,
+      axisTicks: ['90s ago', '60s', '30s', 'NOW'],
+    }
+  }
+  if (preferredWindow === 120) {
     return {
       windowSeconds: 120,
       axisTicks: ['2m ago', '90s', '60s', '30s', 'NOW'],
@@ -42,22 +48,9 @@ export function getAdaptiveTimeWindow(maxAgeSeconds: number, preferredWindow?: n
       axisTicks: ['60m', '45m', '30m', '15m', 'NOW'],
     }
   }
-  // Expand dynamically in 30-minute steps to contain the oldest observed transaction
-  const halfHours = Math.ceil(maxAgeSeconds / 1800)
-  const windowSeconds = halfHours * 1800
-  const hours = (windowSeconds / 3600).toFixed(windowSeconds % 3600 === 0 ? 0 : 1)
-  const q1 = Math.round((windowSeconds * 0.75) / 60)
-  const q2 = Math.round((windowSeconds * 0.5) / 60)
-  const q3 = Math.round((windowSeconds * 0.25) / 60)
   return {
-    windowSeconds,
-    axisTicks: [
-      `${hours}h ago`,
-      q1 >= 60 ? `${(q1 / 60).toFixed(1)}h` : `${q1}m`,
-      q2 >= 60 ? `${(q2 / 60).toFixed(1)}h` : `${q2}m`,
-      q3 >= 60 ? `${(q3 / 60).toFixed(1)}h` : `${q3}m`,
-      'NOW',
-    ],
+    windowSeconds: 3600,
+    axisTicks: ['60m', '45m', '30m', '15m', 'NOW'],
   }
 }
 
@@ -65,13 +58,21 @@ export interface PlacedNodeLayout {
   txid: string
   leftPercent: number
   topPercent: number
+  startY: number
+  endY: number
+  trajectoryDeltaY: number
+  visualOffsetX: number
+  visualOffsetY: number
+  visualPhaseSeconds: number
   lane: number
   sizePx: number
   isOverflow: boolean
   densityTier: 'large' | 'medium' | 'compact'
+  bobDuration: number
+  bobDelay: number
 }
 
-// 6 primary lanes for large tier
+// 6 primary lanes for large tier (CALM mode)
 export const LANE_PERCENTAGES_LARGE = [10, 26, 42, 58, 74, 90]
 // 10 lanes for medium tier
 export const LANE_PERCENTAGES_MEDIUM = [8, 17, 26, 35, 44, 53, 62, 71, 80, 89]
@@ -83,17 +84,119 @@ export const LANE_PERCENTAGES_COMPACT = [
 // Default export alias for backwards compatibility
 export const LANE_PERCENTAGES = LANE_PERCENTAGES_LARGE
 
+// Presentation phase is a deterministic visual staggering mechanism for simultaneous observations and is not Bitcoin timing metadata.
+export function getVisualPhaseSeconds(
+  txid: string,
+  densityMode: 'calm' | 'normal' | 'dense' = 'normal'
+): number {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < txid.length; i++) {
+    hash = Math.imul(hash ^ txid.charCodeAt(i), 0x01000193)
+  }
+  const maxPhase = densityMode === 'dense' ? 14 : densityMode === 'calm' ? 5 : 10
+  const norm = (Math.abs(hash) % 10000) / 10000
+  return Number((norm * maxPhase).toFixed(2))
+}
+
+/**
+ * Deterministic presentation-only vertical trajectory delta.
+ * Produces a startY and endY differing by no more than approximately 3–6% of canvas height.
+ * Broadly right -> left without curved network-path semantics or physical Bitcoin routing.
+ */
+export function getTrajectoryDeltaY(txid: string): number {
+  let hash = 0x27d4eb2d
+  for (let i = 0; i < txid.length; i++) {
+    hash = Math.imul(hash ^ txid.charCodeAt(i), 0x165667b1)
+  }
+  const norm = ((Math.abs(hash) % 1000) / 1000) - 0.5
+  const sign = norm >= 0 ? 1 : -1
+  // Differ by 3.0% to 6.0% of canvas height
+  const magnitude = 3.0 + (Math.abs(norm) * 2.0) * 3.0
+  return Number((sign * magnitude).toFixed(2))
+}
+
+/**
+ * PRESENTATION-ONLY visual offset geometry.
+ *
+ * NOTE: This is purely visual presentation geometry to prevent same-second
+ * batch arrivals from forming a rigid vertical barcode line.
+ * It is NOT Bitcoin metadata, does NOT modify `observed_at` or `first_seen_at`,
+ * and is NEVER shown in tooltips, reports, or factual displays.
+ */
+export function getVisualOffset(
+  txid: string,
+  densityTier: 'large' | 'medium' | 'compact' = 'large'
+): {
+  offsetXPercent: number
+  offsetYPercent: number
+  bobDuration: number
+  bobDelay: number
+} {
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c64e6d
+  for (let i = 0; i < txid.length; i++) {
+    const ch = txid.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+
+  // Density-aware deterministic dispersion:
+  // compact: up to ±3.0%
+  // medium: up to ±2.2%
+  // large / default: ±1.8%
+  const maxSpread = densityTier === 'compact' ? 3.0 : densityTier === 'medium' ? 2.2 : 1.8
+  const normX = ((h1 >>> 0) % 1000) / 1000
+  const offsetXPercent = (normX - 0.5) * (maxSpread * 2)
+
+  // Deterministic vertical micro-spread within [-2.0%, +2.0%]
+  const normY = ((h2 >>> 0) % 1000) / 1000
+  const offsetYPercent = (normY - 0.5) * 4.0
+
+  // Secondary atmospheric bobbing: duration 3.6s - 5.8s, phase delay 0s - 3.8s
+  const bobDuration = 3.6 + (((h1 >>> 4) % 22) * 0.1)
+  const bobDelay = ((h2 >>> 4) % 38) * 0.1
+
+  return {
+    offsetXPercent,
+    offsetYPercent,
+    bobDuration,
+    bobDelay,
+  }
+}
+
 export function computeCollisionFreeLayout(
   transactions: LiveTransaction[],
   windowSeconds: number,
-  nowSeconds: number
+  nowSeconds: number,
+  existingLayout?: Map<string, PlacedNodeLayout>,
+  densityMode?: 'calm' | 'normal' | 'dense'
 ): Map<string, PlacedNodeLayout> {
   const result = new Map<string, PlacedNodeLayout>()
   if (!transactions || transactions.length === 0) return result
 
+  const hasExplicitMode = densityMode !== undefined
+  const isDense = densityMode === 'dense'
+  const isCalm = densityMode === 'calm'
   const count = transactions.length
-  const densityTier: 'large' | 'medium' | 'compact' =
-    count <= 40 ? 'large' : count <= 120 ? 'medium' : 'compact'
+
+  // CALM uses larger informative nodes ('large').
+  // When count > 120 or DENSE, compact particle-first nodes ('compact').
+  // NORMAL uses compact particle-first nodes ('medium').
+  const densityTier: 'large' | 'medium' | 'compact' = hasExplicitMode
+    ? isDense || count > 120
+      ? 'compact'
+      : isCalm
+      ? 'large'
+      : 'medium'
+    : count > 120
+    ? 'compact'
+    : count <= 40
+    ? 'large'
+    : count <= 80
+    ? 'medium'
+    : 'compact'
 
   const laneTops =
     densityTier === 'large'
@@ -111,7 +214,7 @@ export function computeCollisionFreeLayout(
   })
 
   // Track placed nodes in each lane: [laneIndex] -> Array of placed items
-  const lanes: Array<Array<{ txid: string; leftPercent: number; sizePx: number }>> = Array.from(
+  const lanes: Array<Array<{ txid: string; leftPercent: number; topPercent: number; sizePx: number }>> = Array.from(
     { length: laneTops.length },
     () => []
   )
@@ -119,9 +222,13 @@ export function computeCollisionFreeLayout(
   sorted.forEach((tx, txIndex) => {
     const observedTime = tx.observed_at ?? tx.first_seen_at ?? nowSeconds
     const ageSeconds = Math.max(0, nowSeconds - observedTime)
-    const progress = Math.min(1.0, Math.max(0, ageSeconds / windowSeconds))
+    const phaseSeconds = hasExplicitMode ? getVisualPhaseSeconds(tx.txid, densityMode) : 0
+    const presentationAge = ageSeconds + phaseSeconds
+    const progress = Math.min(1.0, Math.max(0, presentationAge / windowSeconds))
     // NOW at right (92%), window boundary at left (6%)
     const baseLeftPercent = (1 - progress) * 86 + 6
+
+    const visualOffset = getVisualOffset(tx.txid, densityTier)
 
     let sizePx: number
     let clearancePercent: number
@@ -131,31 +238,42 @@ export function computeCollisionFreeLayout(
     const actualVsize = tx.vsize ?? 0
 
     if (densityTier === 'compact') {
-      // 10px to 22px (neutral visual fallback: 12px)
+      // DENSE: approximately 7-13px
+      sizePx = isPending
+        ? 10
+        : Math.min(13, Math.max(7, 7 + Math.round((actualVsize / 300) * 6)))
+      clearancePercent = Math.max(1.5, (sizePx / 800) * 100 + 0.6)
+    } else if (densityTier === 'medium') {
+      // NORMAL: approximately 9-16px
       sizePx = isPending
         ? 12
-        : Math.min(22, Math.max(10, 10 + Math.round((actualVsize / 800) * 12)))
-      clearancePercent = Math.max(2.0, (sizePx / 800) * 100 + 0.8)
-    } else if (densityTier === 'medium') {
-      // 28px to 40px (neutral visual fallback: 30px)
-      sizePx = isPending
-        ? 30
-        : Math.min(40, Math.max(28, 28 + Math.round((actualVsize / 700) * 12)))
-      clearancePercent = Math.max(3.8, (sizePx / 800) * 100 + 1.5)
+        : Math.min(16, Math.max(9, 9 + Math.round((actualVsize / 800) * 7)))
+      clearancePercent = Math.max(2.2, (sizePx / 800) * 100 + 0.8)
     } else {
-      // 44px to 72px (neutral visual fallback: 48px)
+      // CALM: informative larger nodes ~20-36px
       sizePx = isPending
-        ? 48
-        : Math.min(72, Math.max(44, 44 + Math.round((actualVsize / 600) * 28)))
-      clearancePercent = Math.max(7.0, (sizePx / 800) * 100 + 2.5)
+        ? 24
+        : Math.min(36, Math.max(20, 20 + Math.round((actualVsize / 600) * 16)))
+      clearancePercent = Math.max(4.5, (sizePx / 800) * 100 + 1.8)
     }
 
     let chosenLane = -1
     let leftPercent = baseLeftPercent
+    let topPercent = 50
     let isOverflow = false
 
-    if (densityTier === 'large') {
-      // Find first lane among 0..4 without horizontal collision
+    const prevPlaced = existingLayout?.get(tx.txid)
+    if (
+      prevPlaced &&
+      prevPlaced.densityTier === densityTier &&
+      prevPlaced.lane >= 0 &&
+      prevPlaced.lane < laneTops.length
+    ) {
+      chosenLane = prevPlaced.lane
+      topPercent = prevPlaced.topPercent
+      isOverflow = prevPlaced.isOverflow
+    } else if (densityTier === 'large') {
+      // CALM: use organized discrete lanes
       for (let l = 0; l < 5; l++) {
         const hasCollision = lanes[l].some(
           (placed) => Math.abs(placed.leftPercent - baseLeftPercent) < clearancePercent
@@ -166,7 +284,6 @@ export function computeCollisionFreeLayout(
         }
       }
 
-      // If all 5 normal lanes have collision, check overflow lane (lane 5)
       if (chosenLane === -1) {
         const hasCollisionInOverflow = lanes[5].some(
           (placed) => Math.abs(placed.leftPercent - baseLeftPercent) < clearancePercent
@@ -175,7 +292,6 @@ export function computeCollisionFreeLayout(
           chosenLane = 5
           isOverflow = true
         } else {
-          // If even overflow lane collides, choose lane with greatest distance and apply deterministic stagger
           let bestLane = 0
           let maxDistance = -1
           for (let l = 0; l < 6; l++) {
@@ -194,58 +310,61 @@ export function computeCollisionFreeLayout(
           leftPercent = Math.min(94, Math.max(4, baseLeftPercent + staggerAmount))
         }
       }
+      topPercent = laneTops[chosenLane]
     } else {
-      // Medium and Compact tiers: deterministic lane preference using TXID hash
-      let hash = 0
+      // NORMAL & DENSE: span roughly 8% - 92% of canvas height with continuous TXID distribution
+      let hash = 0x811c9dc5
       for (let i = 0; i < tx.txid.length; i++) {
-        hash = ((hash << 5) - hash) + tx.txid.charCodeAt(i)
-        hash |= 0
+        hash = Math.imul(hash ^ tx.txid.charCodeAt(i), 0x01000193)
       }
-      const numLanes = laneTops.length
-      const preferredLane = Math.abs(hash) % numLanes
+      const normY = ((Math.abs(hash) % 10000) / 10000)
+      topPercent = 8 + normY * 84 // Spans roughly 8% to 92%
 
-      // Check lanes starting from preferredLane
-      for (let step = 0; step < numLanes; step++) {
-        const l = (preferredLane + step) % numLanes
-        const hasCollision = lanes[l].some(
-          (placed) => Math.abs(placed.leftPercent - baseLeftPercent) < clearancePercent
-        )
-        if (!hasCollision) {
-          chosenLane = l
-          break
+      // Lightweight collision-relaxation pass against nearby placed nodes
+      const allPlacedInWindow = lanes.flat()
+      const minSpacingY = densityTier === 'compact' ? 5.0 : 7.0
+      for (const placed of allPlacedInWindow) {
+        const dx = Math.abs(placed.leftPercent - baseLeftPercent)
+        const dy = Math.abs(placed.topPercent - topPercent)
+        if (dx < clearancePercent && dy < minSpacingY) {
+          const shift = (minSpacingY - dy) * (topPercent >= placed.topPercent ? 1 : -1)
+          topPercent = Math.min(92, Math.max(8, topPercent + shift))
         }
       }
-
-      // If all lanes have proximity, pick lane with maximum distance
-      if (chosenLane === -1) {
-        let bestLane = preferredLane
-        let maxDistance = -1
-        for (let l = 0; l < numLanes; l++) {
-          const minDistInLane = lanes[l].reduce((minD, placed) => {
-            return Math.min(minD, Math.abs(placed.leftPercent - baseLeftPercent))
-          }, 999)
-          if (minDistInLane > maxDistance) {
-            maxDistance = minDistInLane
-            bestLane = l
-          }
-        }
-        chosenLane = bestLane
-        const staggerDirection = txIndex % 2 === 0 ? 1 : -1
-        const staggerAmount = (((txIndex % 3) + 1) * 0.8) * staggerDirection
-        leftPercent = Math.min(94, Math.max(5, baseLeftPercent + staggerAmount))
-      }
+      chosenLane = Math.min(laneTops.length - 1, Math.floor(((topPercent - 8) / 84) * laneTops.length))
     }
 
-    lanes[chosenLane].push({ txid: tx.txid, leftPercent, sizePx })
-    result.set(tx.txid, {
+    // Trajectory startY and endY differing by 3%–6% of canvas height
+    let trajectoryDeltaY = getTrajectoryDeltaY(tx.txid)
+    let endY = topPercent + trajectoryDeltaY
+    if (endY < 8) {
+      trajectoryDeltaY = Math.abs(trajectoryDeltaY)
+      endY = topPercent + trajectoryDeltaY
+    } else if (endY > 92) {
+      trajectoryDeltaY = -Math.abs(trajectoryDeltaY)
+      endY = topPercent + trajectoryDeltaY
+    }
+    const startY = topPercent
+
+    lanes[chosenLane].push({ txid: tx.txid, leftPercent, topPercent, sizePx })
+    const placedLayout: PlacedNodeLayout = {
       txid: tx.txid,
       leftPercent,
-      topPercent: laneTops[chosenLane],
+      topPercent,
+      startY,
+      endY,
+      trajectoryDeltaY,
+      visualOffsetX: visualOffset.offsetXPercent,
+      visualOffsetY: visualOffset.offsetYPercent,
+      visualPhaseSeconds: phaseSeconds,
       lane: chosenLane,
       sizePx,
       isOverflow,
       densityTier,
-    })
+      bobDuration: visualOffset.bobDuration,
+      bobDelay: visualOffset.bobDelay,
+    }
+    result.set(tx.txid, placedLayout)
   })
 
   return result
@@ -263,4 +382,83 @@ export function formatBlockSize(size: number | null | undefined): string {
   if (size === null || size === undefined) return '—'
   const kb = size / 1000
   return `${kb.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kB`
+}
+
+export function formatRelativeTime(
+  timestamp?: number,
+  nowSec = Math.floor(Date.now() / 1000)
+): string {
+  if (!timestamp) return 'Unknown'
+  const diff = Math.max(0, nowSec - timestamp)
+  if (diff < 5) return 'Just now'
+  if (diff < 60) return `${diff}s ago`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  return `${Math.floor(diff / 3600)}h ago`
+}
+
+export interface StableMotionTiming {
+  streamDelay: number
+  streamDuration: number
+  anchorWallClock: number
+}
+
+// Module-scoped stable motion memoization cache keyed by (txid, observed_at, windowBucket, densityMode)
+export const motionTimingCache = new Map<string, StableMotionTiming>()
+
+export function clearMotionTimingCache(): void {
+  motionTimingCache.clear()
+}
+
+export function getStableMotionTiming(
+  txid: string,
+  observedAt: number | undefined,
+  windowSeconds: number,
+  referenceNow: number,
+  isNew = false,
+  densityMode?: 'calm' | 'normal' | 'dense'
+): StableMotionTiming {
+  const cacheKey = `${txid}:${observedAt ?? 0}:${windowSeconds}:${densityMode ?? 'default'}`
+  const existing = motionTimingCache.get(cacheKey)
+  if (existing) {
+    return existing
+  }
+
+  // Presentation phase offset staggers simultaneous batch arrivals
+  const phaseOffset = densityMode ? getVisualPhaseSeconds(txid, densityMode) : 0
+
+  let priorAnchor: StableMotionTiming | undefined
+  for (const [key, entry] of motionTimingCache.entries()) {
+    if (key.startsWith(`${txid}:`)) {
+      priorAnchor = entry
+      break
+    }
+  }
+
+  let initialDelay: number
+  if (priorAnchor && priorAnchor.streamDuration !== windowSeconds) {
+    const elapsed = Math.max(0, referenceNow - priorAnchor.anchorWallClock - priorAnchor.streamDelay)
+    const progress = Math.min(1.0, Math.max(0, elapsed / priorAnchor.streamDuration))
+    initialDelay = -Math.min(windowSeconds, progress * windowSeconds)
+  } else if (isNew) {
+    initialDelay = 0
+  } else {
+    const ageSeconds = Math.max(0, referenceNow - (observedAt ?? referenceNow))
+    initialDelay = -Math.min(windowSeconds, ageSeconds + phaseOffset)
+  }
+
+  const timing: StableMotionTiming = {
+    streamDelay: initialDelay,
+    streamDuration: windowSeconds,
+    anchorWallClock: referenceNow,
+  }
+  motionTimingCache.set(cacheKey, timing)
+
+  if (motionTimingCache.size > 2000) {
+    const keysToDelete = Array.from(motionTimingCache.keys()).slice(0, 500)
+    for (const k of keysToDelete) {
+      motionTimingCache.delete(k)
+    }
+  }
+
+  return timing
 }

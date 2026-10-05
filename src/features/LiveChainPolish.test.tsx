@@ -82,6 +82,9 @@ class MockWebSocket {
     setTimeout(() => {
       this.readyState = 1
       this.onopen?.()
+      mockSnapshot.latest_transactions.forEach((tx) => {
+        this.emit({ type: 'transaction_added', data: { ...tx, observed_at: Math.floor(Date.now() / 1000) } })
+      })
     }, 10)
   }
 
@@ -98,7 +101,7 @@ class MockWebSocket {
 
 describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () => {
   beforeEach(() => {
-    window.location.hash = ''
+    window.location.hash = '#live'
     MockWebSocket.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket)
     vi.stubGlobal(
@@ -167,6 +170,7 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
   describe('Semantics: "X shown · Y recently observed" vs Total Mempool', () => {
     it('separates authoritative Bitcoin mempool total from TxSignX recent-observation set', async () => {
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       // Total mempool count in status strip
       const mempoolStrip = await screen.findByLabelText('Bitcoin network status')
@@ -174,7 +178,8 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
       expect(screen.getByText('75,698')).toBeTruthy()
 
       // TxSignX Live Flow counter badge
-      expect(await screen.findByText('2 shown · 2 recently observed')).toBeTruthy()
+      expect(await screen.findByText(/2 live observations/)).toBeTruthy()
+      expect(screen.getByText(/recent observations cached/)).toBeTruthy()
       // Never display old misleading copy
       expect(screen.queryByText(/mempool entries/i)).toBeNull()
     })
@@ -183,6 +188,7 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
   describe('Block Metric Layout', () => {
     it('renders block metrics in distinct semantic cells with thousands separators and units', async () => {
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
       const blockCard = await screen.findByRole('button', { name: /Explore block #890000/i })
       expect(blockCard).toBeTruthy()
@@ -199,8 +205,9 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
   describe('Pending Hydration Presentation & Factual Semantics', () => {
     it('displays neutral fallback without claiming fake vsize for unhydrated incoming transactions', async () => {
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
-      await screen.findByText('2 shown · 2 recently observed')
+      await screen.findByText(/2 live observations/)
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
       expect(ws).toBeDefined()
 
@@ -216,8 +223,8 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
         },
       })
 
-      // Working set increases to 3 recently observed
-      expect(await screen.findByText('3 shown · 3 recently observed')).toBeTruthy()
+      // Working set increases to 3 live observations
+      expect(await screen.findByText(/3 live observations/)).toBeTruthy()
 
       // The unhydrated node should have pending hydration marker
       const pendingNode = await screen.findByLabelText(/vsize: Pending/i)
@@ -235,8 +242,9 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
 
     it('updates node geometry and removes pending marker when transaction_updated arrives', async () => {
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
-      await screen.findByText('2 shown · 2 recently observed')
+      await screen.findByText(/2 live observations/)
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
       expect(ws).toBeDefined()
 
@@ -282,8 +290,9 @@ describe('Section 16: Live Chain Presentation & Correctness Polish Tests', () =>
   describe('RBF Semantics & Visual Indicators', () => {
     it('applies rbf-indicated ONLY to explicit RBF transactions and describes it factually', async () => {
       render(<App />)
+    fireEvent.click(screen.getByRole('radio', {name: 'Live Flow'}))
 
-      await screen.findByText('2 shown · 2 recently observed')
+      await screen.findByText(/2 live observations/)
 
       const nonRbfNode = screen.getByLabelText(/Transaction aaaa11/i)
       const rbfNode = screen.getByLabelText(/Transaction bbbb22/i)

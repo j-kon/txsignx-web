@@ -54,7 +54,7 @@ export function Policies({api}:{api:ApiClient}){
   return (
     <div className="policies-page">
       <div className="page-heading">
-        <span className="section-kicker">Security Invariants</span>
+        <span className="section-kicker">Verification library</span>
         <h1>Policy rules</h1>
         <p>The deterministic verification registry published by your Rust security engine.</p>
       </div>
@@ -71,6 +71,11 @@ export function Policies({api}:{api:ApiClient}){
         </div>
       ):(
         <>
+          <div className="policy-summary" aria-label="Policy registry summary">
+            <div><span className="policy-summary-icon" aria-hidden="true">✓</span><strong>{catalog.active_rules.length}</strong><span>Active rules</span><p>Evaluated against available transaction facts.</p></div>
+            <div><span className="policy-summary-icon" aria-hidden="true">◷</span><strong>{catalog.deferred_rules.length}</strong><span>Deferred rules</span><p>Documented checks that are not yet evaluated.</p></div>
+            <div className="policy-summary-note"><strong>Explicit coverage.</strong><p>Missing context stays visible. Every decision tells you what was checked.</p></div>
+          </div>
           <div className="policy-overview-banner">
             <p className="scope">
               <strong>{catalog.active_rules.length} active rules</strong> · <strong>{catalog.deferred_rules.length} deferred rules</strong>. Active rules are evaluated strictly against available facts. Unsupplied wallet or node context is recorded explicitly in coverage.
@@ -116,6 +121,7 @@ export function Policies({api}:{api:ApiClient}){
             </div>
           </div>
 
+          <p className="registry-results" role="status">Showing {filteredRules.length} of {allRules.length} rules</p>
           {filteredRules.length===0?(
             <div className="empty-filter-state">
               <p>No policy rules match the selected filter.</p>

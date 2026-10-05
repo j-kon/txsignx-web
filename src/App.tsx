@@ -6,11 +6,13 @@ import {Inspector} from './features/Inspector'
 import {LiveChain} from './features/LiveChain'
 import {Policies} from './features/Policies'
 
+import {LiveFeedProvider} from './features/LiveFeedContext'
+
 function App(){
   const [page,setPage]=useState(()=>{
     const hash = window.location.hash
-    if (hash === '' || hash === '#home') {
-      return '#live'
+    if (hash === '' || hash === '#' || hash === '#about' || hash === '#home') {
+      return '#home'
     }
     return hash
   })
@@ -28,9 +30,9 @@ function App(){
   useEffect(()=>{
     const normalize=()=>{
       const hash = window.location.hash
-      if (hash === '' || hash === '#home') {
-        window.history.replaceState(null, '', '#live')
-        setPage('#live')
+      if (hash === '' || hash === '#' || hash === '#about') {
+        window.history.replaceState(null, '', '#home')
+        setPage('#home')
       } else {
         setPage(hash)
       }
@@ -49,20 +51,24 @@ function App(){
           <div className="connection-error" role="alert">
             <p>{connection.error}</p>
           </div>
-        ):page==='#inspector'?(
-          <Inspector api={connection.api!}/>
-        ):page==='#policies'?(
-          <Policies api={connection.api!}/>
-        ):page==='#about'?(
-          <Home/>
-        ):(
-          <LiveChain
-            api={connection.api!}
-            onNavigateInspector={() => {
-              window.location.hash = '#inspector'
-            }}
-          />
-        )}
+        ):connection.api?(
+          <LiveFeedProvider api={connection.api}>
+            {page==='#inspector'?(
+              <Inspector api={connection.api}/>
+            ):page==='#policies'?(
+              <Policies api={connection.api}/>
+            ):page==='#live'?(
+              <LiveChain
+                api={connection.api}
+                onNavigateInspector={() => {
+                  window.location.hash = '#inspector'
+                }}
+              />
+            ):(
+              <Home/>
+            )}
+          </LiveFeedProvider>
+        ):null}
       </main>
       <footer className="site-footer">
         <div className="footer-inner">

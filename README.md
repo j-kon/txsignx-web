@@ -8,6 +8,22 @@ Web presentation layer for TxSignX Bitcoin transaction and PSBT security analysi
 
 TxSignX Web connects to the local `txsignx-api` HTTP service to inspect PSBTs, raw transactions, and transaction IDs (via server-configured Bitcoin Core node), evaluate deterministic security policies, and display findings, risk levels, and rule coverage before signing.
 
+## 🎥 Demo
+
+[▶ Watch the full TxSignX Demo on Loom](https://www.loom.com/share/a6853cc366ef4c419085bb0ee5c599b4)
+
+A walkthrough of TxSignX inspecting Bitcoin transactions and pre-signing packages:
+- **Raw Bitcoin transaction inspection**: Decodes consensus-serialized hex and disassembles scripts.
+- **TXID lookup through Bitcoin Core**: Contextualizes transactions with node-verified chain state.
+- **Inputs, outputs, scripts, and witness inspection**: Detailed breakdown of prevouts, sequence numbers, scriptPubKeys, and witness items.
+- **SegWit and RBF detection**: Identifies witness presence and explicit `nSequence` opt-in RBF signaling.
+- **Confirmed and mempool transaction states**: Distinguishes unconfirmed mempool transactions from confirmed block-anchored transactions without fabricating data.
+- **Fee and fee-rate calculation**: Computes total input/output value, absolute fee, and sat/vB fee rate when prevouts are resolved.
+- **PSBT v0 pre-signing analysis**: Preflight verification for unsigned or partially signed BIP174 packages.
+- **PASS, REVIEW, and BLOCK policy results**: Deterministic rule evaluation highlighting non-critical warnings and critical policy violations.
+
+> **Note:** TxSignX Web is strictly the presentation layer. All transaction decoding, address derivation, witness parsing, and security policy evaluations are performed by the [TxSignX Rust backend](https://github.com/j-kon/txsignx).
+
 ## Architecture and Authority
 
 The web interface is strictly a presentation layer. It does **not** evaluate security rules, calculate fee ratios, or decide `PASS`, `REVIEW`, or `BLOCK`.
@@ -50,6 +66,36 @@ By default, the Vite development server starts at `http://localhost:5173` or `ht
 
 The browser communicates exclusively with this configured endpoint. No analytics, remote telemetry, or third-party network requests are made.
 
+## Live sessions
+
+Live Chain opens the configured API's WebSocket stream and fetches an initial snapshot.
+Incoming transactions update the session list immediately. The app also refreshes the
+snapshot every 15 seconds, resyncs after reconnection, and refreshes when you return
+to the tab or regain connectivity. Requests do not overlap; stream events received
+during a fetch are merged into its snapshot so older responses cannot undo updates.
+
+Live Flow defaults to an activity board with fee-rate lanes, transaction-ID filtering,
+and a median calculated only from known fees in the displayed observation sample.
+Pause display holds the board steady while the feed keeps fetching; Resume live
+shows the latest state. The time stream and dependency graph remain optional views.
+The detailed transaction list is expandable below the board.
+
+The session shows the last received time, a manual refresh action, and delayed or
+unavailable states. Existing observations remain visible if a refresh fails. The
+animated stream distinguishes new arrivals from previously fetched observations.
+All feed and inspection state stays in memory.
+
+For public Bitcoin mainnet data without a local Bitcoin Core node, start the backend
+from the sibling `txsignx` repository:
+
+```sh
+cargo run -p txsignx-api -- --live-source public_mainnet
+```
+
+The public source supplies network observations; node-backed pre-sign verification
+still requires a configured Bitcoin Core node. The frontend always requests data
+through `VITE_TXSIGNX_API_URL` rather than contacting public providers directly.
+
 ## Verification
 
 ```sh
@@ -78,5 +124,5 @@ npm test        # Run Vitest test suite
 
 ## Related Repositories
 
-- [Rust Engine & API (`txsignx`)](https://github.com/j-kon/txsignx)
+- [TxSignX Rust Engine & API (`txsignx`)](https://github.com/j-kon/txsignx) — Core Bitcoin decoding, node integration, and deterministic policy engine
 - [Documentation (`txsignx-docs`)](https://github.com/j-kon/txsignx-docs)
